@@ -46,10 +46,6 @@ public class CreateFileTests
             fakeUser.Id
         );
         
-        _fileRepositoryMock
-            .Setup(repo => repo.FileExists(It.IsAny<byte[]>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(false);
-        
         _userRepositoryMock
             .Setup(repo => repo.GetUserByUserId(fakeUser.Id, It.IsAny<CancellationToken>()))
             .ReturnsAsync(fakeUser);
@@ -62,15 +58,13 @@ public class CreateFileTests
             .Setup(repo => repo.CreateFile(It.IsAny<noKeyCloud.Domain.Entities.File>(), It.IsAny<CancellationToken>(), It.Is<byte[]>(content => content == null)))
             .Returns(Task.CompletedTask);
         
-        var command = new CreateFileCommand(fakeUser.Id, "testFileName", fakeFolder.Id.ToString());
+        var command = new CreateFileCommand(fakeUser.Id, [] ,"MimeType",[],[],fakeFolder.Id.ToString());
         
         var result = await _handler.Handle(command, CancellationToken.None);
         
         Assert.True(result.IsSuccess);
         Assert.NotNull(result.Value);
-        Assert.Equal("testFileName", result.Value.FileName);
         Assert.NotEqual(Guid.Empty, result.Value.FileId);
-        Assert.Equal(0, result.Value.FileSize);
     }
     
     [Fact]
@@ -98,10 +92,6 @@ public class CreateFileTests
             fakeUser.Id
         );
         
-        _fileRepositoryMock
-            .Setup(repo => repo.FileExists(It.IsAny<byte[]>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(false);
-        
         _userRepositoryMock
             .Setup(repo => repo.GetUserByUserId(fakeUser.Id, It.IsAny<CancellationToken>()))
             .ReturnsAsync(fakeUser);
@@ -114,61 +104,12 @@ public class CreateFileTests
             .Setup(repo => repo.CreateFile(It.IsAny<noKeyCloud.Domain.Entities.File>(), It.IsAny<CancellationToken>(), It.Is<byte[]>(content => content == null)))
             .Returns(Task.CompletedTask);
         
-        var command = new CreateFileCommand(fakeUser.Id, "testFileName", fakeFolder.Id.ToString());
+        var command = new CreateFileCommand(fakeUser.Id, [] ,"MimeType",[],[],fakeFolder.Id.ToString());
         
         var result = await _handler.Handle(command, CancellationToken.None);
         
         Assert.False(result.IsSuccess);
         Assert.Equal("Folder not found", result.Error);
-    }
-    
-    [Fact]
-    public async Task Handle_WhenFileExist_ShouldReturnFalse()
-    {
-        var fakeSalt = new byte[] { 1, 2, 3 };
-        var fakeVerifier = new byte[256]; 
-        fakeVerifier[0] = 1;
-        
-        var fakeUser = new User(
-            Guid.NewGuid(), 
-            "test@email.com", 
-            "testuser", 
-            fakeSalt, 
-            fakeVerifier
-        );
-
-        var fakeFolder = new Folder(
-            Guid.NewGuid(),
-            [],
-            [],
-            DateTime.Now,
-            DateTime.Now,
-            Guid.NewGuid(),
-            fakeUser.Id
-        );
-        
-        _fileRepositoryMock
-            .Setup(repo => repo.FileExists(It.IsAny<byte[]>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(true);
-        
-        _userRepositoryMock
-            .Setup(repo => repo.GetUserByUserId(fakeUser.Id, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(fakeUser);
-        
-        _folderRepositoryMock
-            .Setup(repo => repo.GetFolderByFolderId(fakeFolder.Id, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(fakeFolder);
-        
-        _fileRepositoryMock
-            .Setup(repo => repo.CreateFile(It.IsAny<noKeyCloud.Domain.Entities.File>(), It.IsAny<CancellationToken>(), It.Is<byte[]>(content => content == null)))
-            .Returns(Task.CompletedTask);
-        
-        var command = new CreateFileCommand(fakeUser.Id, "testFileName", fakeFolder.Id.ToString());
-        
-        var result = await _handler.Handle(command, CancellationToken.None);
-        
-        Assert.False(result.IsSuccess);
-        Assert.Equal("File already exists", result.Error);
     }
 
     [Fact]
@@ -196,10 +137,6 @@ public class CreateFileTests
             fakeUser.Id
         );
 
-        _fileRepositoryMock
-            .Setup(repo => repo.FileExists(It.IsAny<byte[]>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(false);
-
         _userRepositoryMock
             .Setup(repo => repo.GetUserByUserId(fakeUser.Id, It.IsAny<CancellationToken>()))
             .ReturnsAsync((User?)null);
@@ -208,7 +145,7 @@ public class CreateFileTests
             .Setup(repo => repo.GetFolderByFolderId(fakeFolder.Id, It.IsAny<CancellationToken>()))
             .ReturnsAsync(fakeFolder);
 
-        var command = new CreateFileCommand(fakeUser.Id, "testFileName", fakeFolder.Id.ToString());
+        var command = new CreateFileCommand(fakeUser.Id, [] ,"MimeType",[],[],fakeFolder.Id.ToString());
 
         var result = await _handler.Handle(command, CancellationToken.None);
 
@@ -221,7 +158,7 @@ public class CreateFileTests
     {
         var userId = Guid.NewGuid();
 
-        var command = new CreateFileCommand(userId, "testFileName", "not-a-guid");
+        var command = new CreateFileCommand(Guid.NewGuid(), [] ,"MimeType",[],[],"not-guid");
 
         var result = await _handler.Handle(command, CancellationToken.None);
 

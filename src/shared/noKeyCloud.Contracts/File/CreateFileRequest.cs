@@ -2,6 +2,10 @@
 
 public record CreateFileRequest
 (
-    string FileName,
+    byte[] FileName,
+    string MimeType,
+    long SizeBytes,
+    byte[] EncryptedKey,
+    byte[] Checksum,
     string FolderId
     );

@@ -2,7 +2,5 @@
 
 public record CreateFileResponse
 (
-    string FileName,
-    Guid FileId,
-    long FileSize
+    Guid FileId
     );
