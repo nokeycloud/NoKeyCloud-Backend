@@ -58,15 +58,13 @@ public class CreateFileTests
             .Setup(repo => repo.CreateFile(It.IsAny<noKeyCloud.Domain.Entities.File>(), It.IsAny<CancellationToken>(), It.Is<byte[]>(content => content == null)))
             .Returns(Task.CompletedTask);
         
-        var command = new CreateFileCommand(fakeUser.Id, "testFileName", fakeFolder.Id.ToString());
+        var command = new CreateFileCommand(fakeUser.Id, [] ,"MimeType",[],[],fakeFolder.Id.ToString());
         
         var result = await _handler.Handle(command, CancellationToken.None);
         
         Assert.True(result.IsSuccess);
         Assert.NotNull(result.Value);
-        Assert.Equal("testFileName", result.Value.FileName);
         Assert.NotEqual(Guid.Empty, result.Value.FileId);
-        Assert.Equal(0, result.Value.FileSize);
     }
     
     [Fact]
@@ -106,7 +104,7 @@ public class CreateFileTests
             .Setup(repo => repo.CreateFile(It.IsAny<noKeyCloud.Domain.Entities.File>(), It.IsAny<CancellationToken>(), It.Is<byte[]>(content => content == null)))
             .Returns(Task.CompletedTask);
         
-        var command = new CreateFileCommand(fakeUser.Id, "testFileName", fakeFolder.Id.ToString());
+        var command = new CreateFileCommand(fakeUser.Id, [] ,"MimeType",[],[],fakeFolder.Id.ToString());
         
         var result = await _handler.Handle(command, CancellationToken.None);
         
@@ -147,7 +145,7 @@ public class CreateFileTests
             .Setup(repo => repo.GetFolderByFolderId(fakeFolder.Id, It.IsAny<CancellationToken>()))
             .ReturnsAsync(fakeFolder);
 
-        var command = new CreateFileCommand(fakeUser.Id, "testFileName", fakeFolder.Id.ToString());
+        var command = new CreateFileCommand(fakeUser.Id, [] ,"MimeType",[],[],fakeFolder.Id.ToString());
 
         var result = await _handler.Handle(command, CancellationToken.None);
 
@@ -160,7 +158,7 @@ public class CreateFileTests
     {
         var userId = Guid.NewGuid();
 
-        var command = new CreateFileCommand(userId, "testFileName", "not-a-guid");
+        var command = new CreateFileCommand(Guid.NewGuid(), [] ,"MimeType",[],[],"not-guid");
 
         var result = await _handler.Handle(command, CancellationToken.None);
 
