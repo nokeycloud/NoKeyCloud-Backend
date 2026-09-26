@@ -8,6 +8,7 @@ export interface UserProfileResponse {
     rootFolderId: string;
     rootFolderKey: string;
     isAdmin?: boolean;
+    theme: string;
 }
 
 export async function fetchCurrentUser(): Promise<UserProfileResponse | null> {
