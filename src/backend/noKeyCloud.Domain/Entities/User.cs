@@ -30,6 +30,8 @@ public class User
     
     public bool IsAdmin { get; private set; }
     
+    public string Theme { get; private set; } = "dark";
+    
     //Navigation
     
     private readonly List<UserKey> _userKeys = new();
@@ -83,6 +85,12 @@ public class User
         Verifier = verifier;
         UpdatedAt = DateTime.UtcNow;
         return Result.Success();
+    }
+    
+    public void UpdateTheme(string theme)
+    {
+        Theme = theme;
+        UpdatedAt = DateTime.UtcNow;
     }
 
 

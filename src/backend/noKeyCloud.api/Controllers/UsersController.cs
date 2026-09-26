@@ -4,6 +4,8 @@ using MediatR;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using noKeyCloud.Application.Features.Users.GetMe;
+using noKeyCloud.Application.Features.Users.UpdateTheme;
+using noKeyCloud.Contracts.User;
 
 namespace noKeyCloud.api.Controllers;
 
@@ -31,5 +33,21 @@ public class UsersController(IMediator mediator) : ControllerBase
         }
 
         return NotFound(result.Error);
+    }
+    
+    [HttpPatch("theme")]
+    [Authorize]
+    public async Task<IActionResult> UpdateTheme([FromBody] UpdateThemeRequest request)
+    {
+        var userIdClaim = User.FindFirstValue(JwtRegisteredClaimNames.Sub);
+        if (string.IsNullOrEmpty(userIdClaim) || !Guid.TryParse(userIdClaim, out var userId))
+        {
+            return Unauthorized("User context is invalid.");
+        }
+
+        var result = await mediator.Send(new UpdateThemeCommand(userId, request.Theme));
+    
+        if (result.IsSuccess) return Ok();
+        return BadRequest(result.Error);
     }
 }
