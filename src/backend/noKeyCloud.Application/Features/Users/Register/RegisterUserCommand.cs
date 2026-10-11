@@ -4,10 +4,10 @@ using noKeyCloud.Contracts.Common;
 namespace noKeyCloud.Application.Features.Users.Register;
 
 public record RegisterUserCommand(
+    Guid UserIdentifier,
     string Username,
     string Email,
-    byte[] Salt,
-    byte[] Verifier,
+    string RegistrationRecord,
     byte[] EncryptedMasterKey,
     byte[] KeySalt,
     byte[] RecoveryEncryptedMasterKey,

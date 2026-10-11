@@ -1,7 +1,7 @@
 import {useEffect, useState} from "react";
 import {RegisterForm} from "@/widgets/register-form";
 import {type ActionFunctionArgs, useActionData, useNavigate, useNavigation} from "react-router";
-import {prepareRegistration} from "@/shared/security";
+import {prepareRegistration, registrationOpaque} from "@/shared/security";
 import {backendBaseUrl} from "@/shared/config";
 import {BackupCodesDialog} from "@/features/backup-codes";
 
@@ -18,8 +18,12 @@ export async function registerAction({request}: ActionFunctionArgs) {
         return {error: {errors: {body: ["An invite code is required to register."]}}};
     }
 
-    if (!username && !email || !password) {
-        return {error: {errors: {body: ["Username or email and password are required"]}}};
+    if (!username) {
+        return {error: {errors: {body: ["Username is required"]}}};
+    }
+
+    if (!password) {
+        return {error: {errors: {body: ["Password is required"]}}};
     }
 
     if (password !== confirmPassword) {
@@ -31,16 +35,30 @@ export async function registerAction({request}: ActionFunctionArgs) {
     }
 
     try {
-        const cryptoPayload = await prepareRegistration(username || email, password);
+        const responseInit = await registrationOpaque(password);
+
+        if ('error' in responseInit) {
+            return {
+                error: {
+                    errors: {
+                        body: [responseInit.error.errors.body.join(", ") || "Registration init failed."]
+                    }
+                }
+            };
+        }
+
+        const { userIdentifier, registrationRecord } = responseInit;
+
+        const cryptoPayload = await prepareRegistration(password);
 
         const response = await fetch(`${backendBaseUrl}/api/Authenticate/register`, {
             method: "POST",
             headers: {"Content-Type": "application/json"},
             body: JSON.stringify({
+                userIdentifier,
                 username,
                 email,
-                salt: cryptoPayload.srpSaltBase64,
-                verifier: cryptoPayload.srpVerifierBase64,
+                registrationRecord,
                 encryptedMasterKey: cryptoPayload.encryptedMasterKeyBase64,
                 keySalt: cryptoPayload.keySaltBase64,
                 recoveryEncryptedMasterKey: cryptoPayload.recoveryEncryptedMasterKeyBase64,
