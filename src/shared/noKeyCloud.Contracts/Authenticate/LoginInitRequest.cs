@@ -3,5 +3,5 @@
 public record LoginInitRequest(
     string Username,
     string Email,
-    string A
+    string StartLoginRequest
     );
