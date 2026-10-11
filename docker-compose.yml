@@ -41,7 +41,8 @@ services:
     restart: "no"
     volumes:
       - ./data:/host_data
-    command: sh -c "mkdir -p /host_data/upload && chown -R 1654:1654 /host_data/upload"
+        command: sh -c "mkdir -p /host_data/upload /host_data/app_data /host_data/app_config
+                    && chown -R 1654:1654 /host_data/upload /host_data/app_data /host_data/app_config"
 
   backend:
     build:
