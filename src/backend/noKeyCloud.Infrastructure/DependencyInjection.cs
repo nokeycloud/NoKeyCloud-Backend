@@ -36,8 +36,6 @@ public static class DependencyInjection
 
         services.AddSingleton<IConnectionMultiplexer>(ConnectionMultiplexer.Connect(redisConnectionString)); //TODO: if can't connect, switch to inMemoryCache and print warning
 
-        services.AddSingleton<ISrpSessionStore, SrpSessionStoreProvider>();
-
         services.AddScoped<IFolderRepository, FolderRepository>();
         
         services.AddScoped<IRecoveryMethodRepository, RecoveryMethodRepository>();

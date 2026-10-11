@@ -1,4 +1,3 @@
-export {generateSrpVerifier} from './srp-native';
 export {loginWithOpaque} from './login';
 export {prepareRegistration} from './registration';
 export * from './crypto';
