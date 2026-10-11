@@ -47,13 +47,13 @@ public class AuthenticateController : ControllerBase
         return BadRequest(result.Error);
     }
 
-    [HttpPost("login/srp/init")]
+    [HttpPost("login/init")]
     public async Task<IActionResult> InitLogin([FromBody] LoginInitRequest request)
     {
         var command = new LoginInitCommand(
             request.Username,
             request.Email,
-            request.A);
+            request.StartLoginRequest);
 
         var result = await _mediator.Send(command);
 
@@ -65,12 +65,12 @@ public class AuthenticateController : ControllerBase
         return BadRequest(result.Error);
     }
 
-    [HttpPost("login/srp/verify")]
+    [HttpPost("login/verify")]
     public async Task<IActionResult> VerifyLogin([FromBody] LoginVerifyRequest request)
     {
         var command = new LoginVerifyCommand(
             request.SessionId,
-            request.M1);
+            request.FinishLoginRequest);
 
         var result = await _mediator.Send(command);
 
@@ -96,7 +96,7 @@ public class AuthenticateController : ControllerBase
 
             return Ok(result.Value!.ResponsePayload);
         }
-        else if (result.Error == "Invalid credentials" || result.Error == "Session not found." || result.Error == "SRP verification failed")
+        else if (result.Error == "Invalid credentials" || result.Error == "Session not found." || result.Error == "Login verification failed")
         {
             return Unauthorized(result.Error);
         }

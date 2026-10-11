@@ -3,5 +3,5 @@
 public record LoginVerifyRequest
 (
     string SessionId,
-    string M1
+    string FinishLoginRequest
 );
