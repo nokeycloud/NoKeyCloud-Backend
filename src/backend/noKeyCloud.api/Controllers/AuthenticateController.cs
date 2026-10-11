@@ -10,6 +10,7 @@ using noKeyCloud.Application.Features.Users.RemoveUser;
 using noKeyCloud.Contracts.Authenticate;
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
+using noKeyCloud.Application.Features.Users.RegisterInit;
 
 namespace noKeyCloud.api.Controllers;
 
@@ -28,10 +29,10 @@ public class AuthenticateController : ControllerBase
     public async Task<IActionResult> Register([FromBody] RegisterUserRequest request)
     {
         var command = new RegisterUserCommand(
+            request.UserIdentifier,
             request.Username,
             request.Email,
-            request.Salt,
-            request.Verifier,
+            request.RegistrationRecord,
             request.EncryptedMasterKey,
             request.KeySalt,
             request.RecoveryEncryptedMasterKey,
@@ -189,6 +190,23 @@ public class AuthenticateController : ControllerBase
             return Ok();
         }
 
+        return BadRequest(result.Error);
+    }
+
+    [HttpPost("register/init")]
+    public async Task<IActionResult> RegisterInit([FromBody] RegisterResponseUserRequest request)
+    {
+        var command = new RegisterResponseUserCommand(
+            request.UserIdentifier,
+            request.RegistrationRequest);
+        
+        var result = await _mediator.Send(command);
+
+        if (result.IsSuccess)
+        {
+            return Ok(result.Value);
+        }
+        
         return BadRequest(result.Error);
     }
 }
