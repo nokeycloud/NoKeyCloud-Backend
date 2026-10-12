@@ -30,6 +30,8 @@ public class User
     
     public bool IsAdmin { get; private set; }
     
+    public string Theme { get; private set; } = "dark";
+    
     //Navigation
     
     private readonly List<UserKey> _userKeys = new();
@@ -71,6 +73,12 @@ public class User
         CreatedAt = DateTime.UtcNow;
         UpdatedAt = CreatedAt;
         IsAdmin = isAdmin;
+    }
+    
+    public void UpdateTheme(string theme)
+    {
+        Theme = theme;
+        UpdatedAt = DateTime.UtcNow;
     }
     
     //EF

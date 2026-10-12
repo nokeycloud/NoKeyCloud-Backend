@@ -1,6 +1,13 @@
 import { useState, useRef } from "react";
 import { Button } from "@/shared/ui/button";
 import { UploadCloud, Loader2, File as FileIcon, X, CheckCircle2, AlertCircle, Maximize2 } from "lucide-react";
+import {
+    Windows95Modemui,
+    Windows95File,
+    WindowsComctl32Icon,
+    ProgmanIcon6,
+    WindowsShellIcon142
+} from "react-old-icons";
 import { toast } from "sonner";
 import { backendBaseUrl } from "@/shared/config";
 import {
@@ -16,6 +23,7 @@ import {bytesToBase64, cn, formatBytes} from "@/shared/lib";
 import {vaultKeys} from "@/entities/folder";
 import {encryptBytes, encryptString, exportKey, generateAesKey} from "@/shared/security";
 import {customFetch} from "@/shared/api";
+import { useTheme } from "@/app/providers/ThemeProvider";
 
 interface UploadFileDialogProps {
     parentId: string;
@@ -39,6 +47,7 @@ export function UploadFileDialog({ parentId, children, onSuccess }: UploadFileDi
     const [files, setFiles] = useState<UploadFileState[]>([]);
     const [isUploading, setIsUploading] = useState(false);
     const fileInputRef = useRef<HTMLInputElement>(null);
+    const { theme } = useTheme();
 
     const handleDragOver = (e: React.DragEvent<HTMLDivElement>) => {
         e.preventDefault();
@@ -210,7 +219,10 @@ export function UploadFileDialog({ parentId, children, onSuccess }: UploadFileDi
                             onDrop={handleDrop}
                             onClick={() => fileInputRef.current?.click()}
                         >
-                            <UploadCloud className={cn("h-8 w-8 mb-3 transition-colors", isDragging ? "text-primary" : "text-muted-foreground")} />
+                            {theme === "win69"
+                                ? <Windows95Modemui size={32} />
+                                : <UploadCloud className={cn("h-8 w-8 mb-3 transition-colors", isDragging ? "text-primary" : "text-muted-foreground")} />
+                            }
                             <p className="text-sm font-medium mb-1 truncate max-w-full px-4">Click or drag files to this area</p>
                             <p className="text-xs text-muted-foreground text-center truncate max-w-full px-4">
                                 Files will be encrypted locally before being stored securely.
@@ -240,8 +252,11 @@ export function UploadFileDialog({ parentId, children, onSuccess }: UploadFileDi
                                 <div className="max-h-[35vh] overflow-y-auto space-y-2 pr-1 custom-scrollbar min-w-0">
                                     {files.map((fileState) => (
                                         <div key={fileState.id} className="flex items-center justify-between p-3 border rounded-lg bg-card shadow-sm gap-3 min-w-0">
-                                            <div className="p-2 bg-primary/10 rounded-md text-primary shrink-0">
-                                                <FileIcon className="h-5 w-5" />
+                                            <div className={cn("shrink-0", theme !== "win69" && "p-2 bg-primary/10 rounded-md text-primary")}>
+                                                {theme === "win69"
+                                                    ? <Windows95File size={24} />
+                                                    : <FileIcon className="h-5 w-5" />
+                                                }
                                             </div>
 
                                             <div className="flex flex-col flex-1 min-w-0 overflow-hidden">
@@ -258,9 +273,13 @@ export function UploadFileDialog({ parentId, children, onSuccess }: UploadFileDi
 
                                             <div className="shrink-0 flex items-center justify-center w-8">
                                                 {fileState.status === 'success' ? (
-                                                    <CheckCircle2 className="h-5 w-5 text-green-500" />
+                                                    theme === "win69"
+                                                        ? <ProgmanIcon6 size={24} />
+                                                        : <CheckCircle2 className="h-5 w-5 text-green-500" />
                                                 ) : fileState.status === 'error' ? (
-                                                    <AlertCircle className="h-5 w-5 text-destructive" />
+                                                    theme === "win69"
+                                                        ? <WindowsComctl32Icon size={24} />
+                                                        : <AlertCircle className="h-5 w-5 text-destructive" />
                                                 ) : (fileState.status === 'processing' || fileState.status === 'uploading') ? (
                                                     <Loader2 className="h-4 w-4 animate-spin text-primary" />
                                                 ) : (
@@ -271,7 +290,10 @@ export function UploadFileDialog({ parentId, children, onSuccess }: UploadFileDi
                                                         onClick={() => removeFile(fileState.id)}
                                                         disabled={isUploading}
                                                     >
-                                                        <X className="h-4 w-4" />
+                                                        {theme === "win69"
+                                                            ? <WindowsShellIcon142 size={24} />
+                                                            : <X className="h-4 w-4" />
+                                                        }
                                                     </Button>
                                                 )}
                                             </div>

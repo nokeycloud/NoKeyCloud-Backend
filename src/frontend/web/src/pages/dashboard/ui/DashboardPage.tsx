@@ -4,14 +4,20 @@ import { useAuth } from "@/entities/session";
 import { FileExplorer } from "@/widgets/file-explorer";
 import { Button } from "@/shared/ui/button";
 import {FolderPlus, Upload} from "lucide-react";
+import {
+    WindowsFolderOpen,
+    WindowsCDROMDrive
+} from "react-old-icons";
 import { CreateFolderDialog } from "@/features/create-folder";
 import { UploadFileDialog } from "@/features/upload-file";
+import { useTheme } from "@/app/providers/ThemeProvider";
 
 export function DashboardPage() {
     const navigate = useNavigate();
     const { folderId } = useParams();
     const auth = useAuth();
     const [refreshKey, setRefreshKey] = useState(0);
+    const { theme } = useTheme();
 
     useEffect(() => {
         document.title = "noKeyCloud";
@@ -39,7 +45,11 @@ export function DashboardPage() {
                         onSuccess={() => setRefreshKey((prev) => prev + 1)}
                     >
                         <Button>
-                            <FolderPlus className="h-4 w-4 mr-2" />
+                            {theme === "win69"
+                                ? <WindowsFolderOpen size={24} />
+                                : <FolderPlus className="h-4 w-4 mr-2" />
+                            }
+
                             New Folder
                         </Button>
                     </CreateFolderDialog>
@@ -48,7 +58,11 @@ export function DashboardPage() {
                         onSuccess={() => setRefreshKey((prev) => prev + 1)}
                     >
                         <Button variant="secondary">
-                            <Upload className="h-4 w-4 mr-2" />
+                            {theme === "win69"
+                                ? <WindowsCDROMDrive size={24} />
+                                : <Upload className="h-4 w-4 mr-2" />
+                            }
+
                             Upload File
                         </Button>
                     </UploadFileDialog>

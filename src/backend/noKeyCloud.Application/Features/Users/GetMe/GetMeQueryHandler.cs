@@ -32,7 +32,8 @@ public class GetMeQueryHandler(IUserRepository userRepository, IFolderRepository
             user.Email,
             rootFolderId.ToString(),
             folder.EncryptedKey,
-            IsAdmin: user.IsAdmin
+            IsAdmin: user.IsAdmin,
+            user.Theme
         );
 
         return Result<GetMeResponse>.Success(response);

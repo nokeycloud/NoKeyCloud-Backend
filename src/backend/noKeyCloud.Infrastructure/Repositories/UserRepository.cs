@@ -73,4 +73,10 @@ public class UserRepository : IUserRepository
         }
         return await _context.Users.AnyAsync(u => u.Username == username || u.Email == email, cancellationToken);
     }
+    
+    public async Task UpdateUserAsync(User user, CancellationToken cancellationToken = default)
+    {
+        _context.Users.Update(user);
+        await _context.SaveChangesAsync(cancellationToken);
+    }
 }
