@@ -23,6 +23,8 @@ RUN echo "server { \
 }" > /etc/nginx/conf.d/default.conf
 
 COPY --from=build /app/dist /usr/share/nginx/html
+COPY server_public_key.sh /server_public_key.sh
+RUN chmod +x /server_public_key.sh
 
 EXPOSE 80
-ENTRYPOINT ["nginx", "-g", "daemon off;"]
+ENTRYPOINT ["/server_public_key.sh"]

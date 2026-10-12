@@ -1,5 +1,6 @@
-import { backendBaseUrl } from '@/shared/config';
+import { backendBaseUrl, getTrustedOpaqueServerKey } from '@/shared/config';
 import * as opaque from "@serenity-kit/opaque";
+import {ServerIdentityMismatchError} from "./errors.ts";
 
 export interface LoginInitResponse {
     loginResponse: string;
@@ -35,13 +36,17 @@ export const loginWithOpaque = async (username: string, password: string) => {
     if (!loginResult) {
         throw new Error("Login failed");
     }
-    const { finishLoginRequest, sessionKey } = loginResult;
+
+    const trustedKey = getTrustedOpaqueServerKey();
+    if (loginResult.serverStaticPublicKey !== trustedKey) {
+        throw new ServerIdentityMismatchError();
+    }
 
     const verifyRes = await fetch(`${backendBaseUrl}/api/Authenticate/login/verify`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
-        body: JSON.stringify({ sessionId, finishLoginRequest: finishLoginRequest })
+        body: JSON.stringify({ sessionId, finishLoginRequest: loginResult.finishLoginRequest })
     });
 
     if (!verifyRes.ok) throw new Error('Invalid credentials');
