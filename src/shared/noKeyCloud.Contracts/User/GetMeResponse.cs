@@ -6,5 +6,6 @@ public record GetMeResponse(
     string Email,
     string RootFolderId,
     byte[] RootFolderKey,
-    bool IsAdmin
+    bool IsAdmin,
+    string Theme
     );
