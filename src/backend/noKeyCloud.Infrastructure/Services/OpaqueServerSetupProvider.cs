@@ -57,7 +57,7 @@ public class OpaqueServerSetupProvider(ILogger<OpaqueServerSetupProvider> logger
             }
         }
         
-        logger.LogWarning(
+        logger.LogCritical(
             "No OPAQUE server setup key found. Generating a new one at {Path}. " +
             "BACK UP this file: if it is lost, all existing user registrations become invalid.",
             filePath);
@@ -83,5 +83,16 @@ public class OpaqueServerSetupProvider(ILogger<OpaqueServerSetupProvider> logger
         var opaqueServer = new OpaqueServer();
         opaqueServer.CreateSetup(out var serverSetup);
         return serverSetup ?? throw new InvalidOperationException("Failed to create server key");
+    }
+    
+    public async Task<string> GetServerPublicKeyAsync(CancellationToken cancellationToken)
+    {
+        var setup = await GetServerSetupAsync(cancellationToken);
+        var server = new OpaqueServer();
+        if (!server.GetPublicKey(setup, out var publicKey) || string.IsNullOrEmpty(publicKey))
+        {
+            throw new InvalidOperationException("Failed to derive OPAQUE server public key from setup.");
+        }
+        return publicKey;
     }
 }
