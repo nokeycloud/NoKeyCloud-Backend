@@ -1,3 +1,5 @@
+using Microsoft.AspNetCore.Antiforgery;
+using Microsoft.AspNetCore.Mvc;
 using noKeyCloud.api.CustomMiddleware;
 using noKeyCloud.Application;
 using noKeyCloud.Infrastructure;
@@ -46,6 +48,28 @@ public class Program
             });
         });
 
+
+        builder.Services.AddAntiforgery(options =>
+        {
+            options.HeaderName = "X-CSRF-TOKEN";              
+
+            options.Cookie.Name = ".NoKeyCloud.Antiforgery";               
+            options.Cookie.SecurePolicy = CookieSecurePolicy.Always;
+            options.Cookie.SameSite = SameSiteMode.Strict;
+            options.Cookie.IsEssential = true;
+
+            options.SuppressXFrameOptionsHeader = true;       
+        });
+
+        builder.Services.AddControllers(options =>
+        {
+            options.Filters.Add(new AutoValidateAntiforgeryTokenAttribute());
+        });
+
+        builder.Services.AddControllers(options =>
+        {
+            options.Filters.Add(new AutoValidateAntiforgeryTokenAttribute());
+        });
 
         builder.Services.AddHsts(options =>
         {
@@ -100,6 +124,22 @@ public class Program
 
             await next(context);
         });
+
+        app.Use((context, next) =>
+        {
+            var requestPath = context.Request.Path.Value;
+
+            if (string.Equals(requestPath, "/", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(requestPath, "/index.html", StringComparison.OrdinalIgnoreCase))
+            {
+                var tokenSet = antiforgery.GetAndStoreTokens(context);
+                context.Response.Cookies.Append("XSRF-TOKEN", tokenSet.RequestToken!,
+                    new CookieOptions { HttpOnly = false });
+            }
+
+            return next(context);
+        });
+
 
         app.UseContentSecurityPolicy();
         //app.UseHttpsRedirection();
