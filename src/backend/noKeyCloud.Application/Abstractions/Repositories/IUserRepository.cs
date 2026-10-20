@@ -11,4 +11,6 @@ public interface IUserRepository
     Task<User?> GetUserByUserId(Guid userId, CancellationToken cancellationToken);
     Task<Result> RemoveUserByUser(User user, CancellationToken cancellationToken);
     Task<bool> HasAnyUsersAsync(CancellationToken cancellationToken = default);
+    Task<bool> UserExistsAsync(string username, string? email, CancellationToken cancellationToken);
+    Task UpdateUserAsync(User user, CancellationToken cancellationToken = default);
 }

@@ -8,6 +8,10 @@ namespace noKeyCloud.Application.UnitTests.Features.Users.RefreshSession;
 
 public class RefreshSessionHandlerTests
 {
+    private const string OldToken = "old-valid-token";
+    private const string NewToken = "new-refresh-token";
+    private const string JwtToken = "new-jwt-token";
+
     private readonly Mock<IJwtService> _jwtServiceMock;
     private readonly Mock<IRefreshTokenProvider> _refreshTokenProviderMock;
     private readonly Mock<IUserRepository> _userRepositoryMock;
@@ -18,170 +22,281 @@ public class RefreshSessionHandlerTests
         _jwtServiceMock = new Mock<IJwtService>();
         _refreshTokenProviderMock = new Mock<IRefreshTokenProvider>();
         _userRepositoryMock = new Mock<IUserRepository>();
-        _handler = new RefreshSessionHandler(_jwtServiceMock.Object, _refreshTokenProviderMock.Object, _userRepositoryMock.Object);
+
+        _handler = new RefreshSessionHandler(
+            _jwtServiceMock.Object,
+            _refreshTokenProviderMock.Object,
+            _userRepositoryMock.Object);
+    }
+
+    private static User CreateFakeUser(Guid id, bool isAdmin = false) =>
+        new(
+            id: id,
+            userIdentifier: Guid.NewGuid(),
+            email: "test@test.com",
+            username: "test",
+            registrationRecord: "record",
+            encryptedMasterKey: [1],
+            keySalt: [2],
+            isAdmin: isAdmin);
+
+    private void SetupHappyPath(Guid userId, bool isAdmin = false)
+    {
+        _refreshTokenProviderMock
+            .Setup(p => p.GetUserIdByRefreshTokenAsync(OldToken, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(userId);
+        _refreshTokenProviderMock
+            .Setup(p => p.GetRefreshTokenAsync(userId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(OldToken);
+        _refreshTokenProviderMock
+            .Setup(p => p.GenerateRefreshToken())
+            .Returns(NewToken);
+        _userRepositoryMock
+            .Setup(r => r.GetUserByUserId(userId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(CreateFakeUser(userId, isAdmin));
+        _jwtServiceMock
+            .Setup(j => j.JwtTokenService(userId, isAdmin))
+            .ReturnsAsync(JwtToken);
     }
 
     [Fact]
-    public async Task Handle_ValidToken_ReturnsNewTokenAndJwt()
+    public async Task Handle_WhenTokenValid_ShouldReturnNewTokens()
     {
         var userId = Guid.NewGuid();
-        var command = new RefreshSessionCommand("old-valid-token");
+        SetupHappyPath(userId);
 
-        _refreshTokenProviderMock.Setup(x => x.GetUserIdByRefreshTokenAsync("old-valid-token", It.IsAny<CancellationToken>()))
-            .ReturnsAsync(userId);
-
-        _refreshTokenProviderMock.Setup(x => x.GetRefreshTokenAsync(userId, It.IsAny<CancellationToken>()))
-            .ReturnsAsync("old-valid-token");
-
-        _refreshTokenProviderMock.Setup(x => x.GenerateRefreshToken())
-            .Returns("new-refresh-token");
-
-        _userRepositoryMock.Setup(x => x.GetUserByUserId(userId, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new User(userId, "test@test.com", "test", new byte[0], new byte[0], new byte[0], new byte[0], false));
-
-        _jwtServiceMock.Setup(x => x.JwtTokenService(userId, false))
-            .ReturnsAsync("new-jwt-token");
+        var command = new RefreshSessionCommand(OldToken);
 
         var result = await _handler.Handle(command, CancellationToken.None);
 
         Assert.True(result.IsSuccess);
         Assert.NotNull(result.Value);
-
-
-        Assert.Equal("new-refresh-token", result.Value!.RefreshToken);
-        Assert.Equal("new-jwt-token", result.Value!.JwtToken);
-
-        _refreshTokenProviderMock.Verify(x => x.StoreRefreshTokenAsync(
-           userId,
-           "new-refresh-token",
-           TimeSpan.FromHours(24),
-           It.IsAny<CancellationToken>()
-       ), Times.Once);
-
+        Assert.Equal(NewToken, result.Value.RefreshToken);
+        Assert.Equal(JwtToken, result.Value.JwtToken);
     }
 
     [Fact]
-    public async Task Handle_UserIdNotFound_ReturnsFailure()
+    public async Task Handle_WhenTokenValid_ShouldRotateRefreshTokenByRevokingOldAndStoringNew()
     {
+        var userId = Guid.NewGuid();
+        SetupHappyPath(userId);
 
-        var command = new RefreshSessionCommand("invalid-token");
+        var command = new RefreshSessionCommand(OldToken);
 
-        _refreshTokenProviderMock.Setup(x => x.GetUserIdByRefreshTokenAsync("invalid-token", It.IsAny<CancellationToken>()))
+        await _handler.Handle(command, CancellationToken.None);
+
+        _refreshTokenProviderMock.Verify(
+            p => p.RevokeRefreshTokenAsync(OldToken, It.IsAny<CancellationToken>()),
+            Times.Once);
+        _refreshTokenProviderMock.Verify(
+            p => p.StoreRefreshTokenAsync(userId, NewToken, TimeSpan.FromHours(24), It.IsAny<CancellationToken>()),
+            Times.Once);
+    }
+
+    [Fact]
+    public async Task Handle_WhenUserIdNotFound_ShouldReturnFailure()
+    {
+        _refreshTokenProviderMock
+            .Setup(p => p.GetUserIdByRefreshTokenAsync(OldToken, It.IsAny<CancellationToken>()))
             .ReturnsAsync((Guid?)null);
 
+        var command = new RefreshSessionCommand(OldToken);
+
         var result = await _handler.Handle(command, CancellationToken.None);
 
         Assert.False(result.IsSuccess);
         Assert.Equal("Invalid or expired refresh token.", result.Error);
+        _refreshTokenProviderMock.Verify(
+            p => p.RevokeRefreshTokenAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
     [Fact]
-    public async Task Handle_StoredTokenMismatch_ReturnsFailure()
+    public async Task Handle_WhenStoredTokenMismatches_ShouldReturnFailureAndNotRotate()
     {
         var userId = Guid.NewGuid();
-        var command = new RefreshSessionCommand("provided-token");
-
-        _refreshTokenProviderMock.Setup(x => x.GetUserIdByRefreshTokenAsync("provided-token", It.IsAny<CancellationToken>()))
+        _refreshTokenProviderMock
+            .Setup(p => p.GetUserIdByRefreshTokenAsync(OldToken, It.IsAny<CancellationToken>()))
             .ReturnsAsync(userId);
-
-        _refreshTokenProviderMock.Setup(x => x.GetRefreshTokenAsync(userId, It.IsAny<CancellationToken>()))
+        _refreshTokenProviderMock
+            .Setup(p => p.GetRefreshTokenAsync(userId, It.IsAny<CancellationToken>()))
             .ReturnsAsync("different-stored-token");
 
+        var command = new RefreshSessionCommand(OldToken);
+
         var result = await _handler.Handle(command, CancellationToken.None);
 
+        Assert.False(result.IsSuccess);
+        Assert.Equal("Invalid or expired refresh token.", result.Error);
+        _refreshTokenProviderMock.Verify(
+            p => p.RevokeRefreshTokenAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task Handle_WhenStoredTokenEmpty_ShouldReturnFailure()
+    {
+        var userId = Guid.NewGuid();
+        _refreshTokenProviderMock
+            .Setup(p => p.GetUserIdByRefreshTokenAsync(OldToken, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(userId);
+        _refreshTokenProviderMock
+            .Setup(p => p.GetRefreshTokenAsync(userId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(string.Empty);
+
+        var command = new RefreshSessionCommand(OldToken);
+
+        var result = await _handler.Handle(command, CancellationToken.None);
 
         Assert.False(result.IsSuccess);
         Assert.Equal("Invalid or expired refresh token.", result.Error);
     }
 
     [Fact]
-    public async Task Handle_GenerateRefreshTokenFails_ReturnsFailure()
+    public async Task Handle_WhenGenerateRefreshTokenReturnsEmpty_ShouldReturnFailure()
     {
         var userId = Guid.NewGuid();
-        var command = new RefreshSessionCommand("valid-token");
-
-        _refreshTokenProviderMock.Setup(x => x.GetUserIdByRefreshTokenAsync("valid-token", It.IsAny<CancellationToken>()))
+        _refreshTokenProviderMock
+            .Setup(p => p.GetUserIdByRefreshTokenAsync(OldToken, It.IsAny<CancellationToken>()))
             .ReturnsAsync(userId);
-
-        _refreshTokenProviderMock.Setup(x => x.GetRefreshTokenAsync(userId, It.IsAny<CancellationToken>()))
-            .ReturnsAsync("valid-token");
-
-        _refreshTokenProviderMock.Setup(x => x.GenerateRefreshToken())
+        _refreshTokenProviderMock
+            .Setup(p => p.GetRefreshTokenAsync(userId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(OldToken);
+        _refreshTokenProviderMock
+            .Setup(p => p.GenerateRefreshToken())
             .Returns(string.Empty);
 
-        var result = await _handler.Handle(command, CancellationToken.None);
+        var command = new RefreshSessionCommand(OldToken);
 
+        var result = await _handler.Handle(command, CancellationToken.None);
 
         Assert.False(result.IsSuccess);
         Assert.Equal("Failed to generate a new refresh token.", result.Error);
+        _refreshTokenProviderMock.Verify(
+            p => p.StoreRefreshTokenAsync(It.IsAny<Guid>(), It.IsAny<string>(), It.IsAny<TimeSpan>(), It.IsAny<CancellationToken>()),
+            Times.Never);
     }
 
     [Fact]
-    public async Task Handle_GenerateJwtFails_ReturnsFailure()
+    public async Task Handle_WhenGenerateJwtReturnsEmpty_ShouldReturnFailure()
     {
         var userId = Guid.NewGuid();
-        var command = new RefreshSessionCommand("valid-token");
-
-        _refreshTokenProviderMock.Setup(x => x.GetUserIdByRefreshTokenAsync("valid-token", It.IsAny<CancellationToken>()))
-            .ReturnsAsync(userId);
-
-        _refreshTokenProviderMock.Setup(x => x.GetRefreshTokenAsync(userId, It.IsAny<CancellationToken>()))
-            .ReturnsAsync("valid-token");
-
-        _refreshTokenProviderMock.Setup(x => x.GenerateRefreshToken())
-            .Returns("new-refresh-token");
-
-        _userRepositoryMock.Setup(x => x.GetUserByUserId(userId, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new User(userId, "test@test.com", "test", new byte[0], new byte[0], new byte[0], new byte[0], false));
-
-        _jwtServiceMock.Setup(x => x.JwtTokenService(userId, false))
+        SetupHappyPath(userId);
+        _jwtServiceMock
+            .Setup(j => j.JwtTokenService(userId, false))
             .ReturnsAsync(string.Empty);
 
-        var result = await _handler.Handle(command, CancellationToken.None);
+        var command = new RefreshSessionCommand(OldToken);
 
+        var result = await _handler.Handle(command, CancellationToken.None);
 
         Assert.False(result.IsSuccess);
         Assert.Equal("Failed to generate a new JWT token.", result.Error);
     }
+
     [Fact]
-    public async Task Handle_ValidToken_ReturnsNewTokenAndJwt_AndRevokesOldToken()
+    public async Task Handle_WhenUserIsAdmin_ShouldRequestAdminJwt()
     {
         var userId = Guid.NewGuid();
-        var oldToken = "old-valid-token";
-        var command = new RefreshSessionCommand(oldToken);
+        SetupHappyPath(userId, isAdmin: true);
 
-        _refreshTokenProviderMock.Setup(x => x.GetUserIdByRefreshTokenAsync(oldToken, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(userId);
+        var command = new RefreshSessionCommand(OldToken);
 
-        _refreshTokenProviderMock.Setup(x => x.GetRefreshTokenAsync(userId, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(oldToken);
+        await _handler.Handle(command, CancellationToken.None);
 
-        _refreshTokenProviderMock.Setup(x => x.GenerateRefreshToken())
-            .Returns("new-refresh-token");
+        _jwtServiceMock.Verify(j => j.JwtTokenService(userId, true), Times.Once);
+    }
 
-        _userRepositoryMock.Setup(x => x.GetUserByUserId(userId, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new User(userId, "test@test.com", "test", new byte[0], new byte[0], new byte[0], new byte[0], false));
+    [Fact]
+    public async Task Handle_WhenUserIsNotAdmin_ShouldRequestNonAdminJwt()
+    {
+        var userId = Guid.NewGuid();
+        SetupHappyPath(userId, isAdmin: false);
 
-        _jwtServiceMock.Setup(x => x.JwtTokenService(userId, false))
-            .ReturnsAsync("new-jwt-token");
+        var command = new RefreshSessionCommand(OldToken);
+
+        await _handler.Handle(command, CancellationToken.None);
+
+        _jwtServiceMock.Verify(j => j.JwtTokenService(userId, false), Times.Once);
+    }
+
+    [Fact]
+    public async Task Handle_WhenTokenValid_ShouldReturnResponseWithFutureAccessTokenExpiry()
+    {
+        var userId = Guid.NewGuid();
+        SetupHappyPath(userId);
+
+        var command = new RefreshSessionCommand(OldToken);
 
         var result = await _handler.Handle(command, CancellationToken.None);
 
         Assert.True(result.IsSuccess);
         Assert.NotNull(result.Value);
-        Assert.Equal("new-refresh-token", result.Value!.RefreshToken);
-        Assert.Equal("new-jwt-token", result.Value!.JwtToken);
+        Assert.NotNull(result.Value.ResponsePayload);
+        Assert.True(result.Value.ResponsePayload.AccessTokenExpiresAt > DateTime.UtcNow);
+    }
 
-        _refreshTokenProviderMock.Verify(x => x.RevokeRefreshTokenAsync(
-            oldToken,
-            It.IsAny<CancellationToken>()
-        ), Times.Once);
+    [Fact]
+    public async Task Handle_WhenTokenValid_ShouldGenerateRefreshTokenExactlyOnce()
+    {
+        var userId = Guid.NewGuid();
+        SetupHappyPath(userId);
 
-        _refreshTokenProviderMock.Verify(x => x.StoreRefreshTokenAsync(
-           userId,
-           "new-refresh-token",
-           TimeSpan.FromHours(24),
-           It.IsAny<CancellationToken>()
-       ), Times.Once);
+        var command = new RefreshSessionCommand(OldToken);
+
+        await _handler.Handle(command, CancellationToken.None);
+
+        _refreshTokenProviderMock.Verify(p => p.GenerateRefreshToken(), Times.Once);
+    }
+
+    [Fact]
+    public async Task Handle_WhenTokenValid_ShouldLookupUserById()
+    {
+        var userId = Guid.NewGuid();
+        SetupHappyPath(userId);
+
+        var command = new RefreshSessionCommand(OldToken);
+
+        await _handler.Handle(command, CancellationToken.None);
+
+        _userRepositoryMock.Verify(
+            r => r.GetUserByUserId(userId, It.IsAny<CancellationToken>()),
+            Times.Once);
+    }
+
+    [Fact]
+    public async Task Handle_WhenTokenValid_ShouldNotStoreNewTokenBeforeRevokingOld()
+    {
+        var userId = Guid.NewGuid();
+        var callOrder = new List<string>();
+
+        _refreshTokenProviderMock
+            .Setup(p => p.GetUserIdByRefreshTokenAsync(OldToken, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(userId);
+        _refreshTokenProviderMock
+            .Setup(p => p.GetRefreshTokenAsync(userId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(OldToken);
+        _refreshTokenProviderMock
+            .Setup(p => p.GenerateRefreshToken())
+            .Returns(NewToken);
+        _userRepositoryMock
+            .Setup(r => r.GetUserByUserId(userId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(CreateFakeUser(userId));
+        _jwtServiceMock
+            .Setup(j => j.JwtTokenService(userId, false))
+            .ReturnsAsync(JwtToken);
+
+        _refreshTokenProviderMock
+            .Setup(p => p.RevokeRefreshTokenAsync(OldToken, It.IsAny<CancellationToken>()))
+            .Callback(() => callOrder.Add("revoke"))
+            .Returns(Task.CompletedTask);
+        _refreshTokenProviderMock
+            .Setup(p => p.StoreRefreshTokenAsync(userId, NewToken, It.IsAny<TimeSpan>(), It.IsAny<CancellationToken>()))
+            .Callback(() => callOrder.Add("store"))
+            .Returns(Task.CompletedTask);
+
+        var command = new RefreshSessionCommand(OldToken);
+
+        await _handler.Handle(command, CancellationToken.None);
+
+        Assert.Equal(new[] { "revoke", "store" }, callOrder);
     }
 }
