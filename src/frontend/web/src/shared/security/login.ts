@@ -1,4 +1,6 @@
 import { backendBaseUrl } from '@/shared/config';
+import { customFetch } from '@/shared/api';
+import { invalidateCsrfToken } from '@/shared/api/csrf';
 import {
     N, g, modPow, bytesToBigInt, bigIntToBytes, computeX,
     sha256, pad
@@ -19,6 +21,8 @@ export interface LoginVerifyResponse {
 }
 
 export const loginWithSRP = async (username: string, password: string) => {
+    invalidateCsrfToken();
+
     const aBytes = new Uint8Array(32);
     crypto.getRandomValues(aBytes);
     const a = bytesToBigInt(aBytes);
@@ -26,7 +30,7 @@ export const loginWithSRP = async (username: string, password: string) => {
 
     const ABase64 = bytesToBase64(bigIntToBytes(A));
 
-    const initRes = await fetch(`${backendBaseUrl}/api/Authenticate/login/srp/init`, {
+    const initRes = await customFetch(`${backendBaseUrl}/api/Authenticate/login/srp/init`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ username, email: username, a: ABase64 })
@@ -81,7 +85,7 @@ export const loginWithSRP = async (username: string, password: string) => {
 
     const M1 = await sha256(hNxorhG, hI, sBytes, aBytesPad, bBytesPad, K);
 
-    const verifyRes = await fetch(`${backendBaseUrl}/api/Authenticate/login/srp/verify`, {
+    const verifyRes = await customFetch(`${backendBaseUrl}/api/Authenticate/login/srp/verify`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
@@ -98,6 +102,9 @@ export const loginWithSRP = async (username: string, password: string) => {
     if (bytesToBase64(expectedM2) !== authData.m2) {
         throw new Error('Server backwards trust verification failed: possible Man In The Middle');
     }
+
+    
+    invalidateCsrfToken();
 
     return authData;
 };

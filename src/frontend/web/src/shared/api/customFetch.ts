@@ -1,31 +1,61 @@
 import { backendBaseUrl } from "@/shared/config";
+import { addCsrfHeader, invalidateCsrfToken, isSafeMethod } from "./csrf";
 import { setGuest } from "@/entities/session";
 
-export async function customFetch(url: string, options: RequestInit = {}): Promise<Response> {
-    options.credentials = options.credentials || "include";
+async function send(url: string, options: RequestInit): Promise<Response> {
+  const credentials = options.credentials ?? "include";
+  return fetch(url, { ...options, credentials });
+}
 
-    let response = await fetch(url, options);
+async function sendWithCsrf(
+  url: string,
+  options: RequestInit,
+): Promise<Response> {
+  return send(url, await addCsrfHeader(options));
+}
 
-    if (response.status === 401 && !url.includes("/api/Authenticate/refresh")) {
-        try {
-            const refreshRes = await fetch(`${backendBaseUrl}/api/Authenticate/refresh`, {
-                method: "POST",
-                credentials: "include",
-                headers: {
-                    "Content-Type": "application/json"
-                },
-                body: JSON.stringify({})
-            });
+async function sendWithCsrfRetry(
+  url: string,
+  options: RequestInit,
+): Promise<Response> {
+  let response = await sendWithCsrf(url, options);
 
-            if (refreshRes.ok) {
-                response = await fetch(url, options);
-            } else {
-                setGuest();
-            }
-        } catch (err) {
-            console.error("Critical routing error during intercept refresh loop", err);
-        }
+  if (response.status === 403 && !isSafeMethod(options.method)) {
+    invalidateCsrfToken();
+    response = await sendWithCsrf(url, options);
+  }
+
+  return response;
+}
+
+export async function customFetch(
+  url: string,
+  options: RequestInit = {},
+): Promise<Response> {
+  const requestOptions: RequestInit = { ...options };
+  const isAuthCall =
+    /\/api\/Authenticate\/(login|refresh|logout|register)/i.test(url);
+
+  let response = await sendWithCsrfRetry(url, requestOptions);
+
+  if (response.status === 401 && !isAuthCall) {
+    const refreshResponse = await sendWithCsrfRetry(
+      `${backendBaseUrl}/api/Authenticate/refresh`,
+      {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: "{}",
+      },
+    );
+
+    if (refreshResponse.ok) {
+      response = await sendWithCsrfRetry(url, requestOptions);
+    } else {
+      invalidateCsrfToken();
+      setGuest();
     }
+  }
 
-    return response;
+  return response;
 }

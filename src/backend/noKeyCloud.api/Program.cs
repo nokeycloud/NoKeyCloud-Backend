@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Antiforgery;
 using Microsoft.AspNetCore.Mvc;
 using noKeyCloud.api.CustomMiddleware;
+using noKeyCloud.api.Filters;
 using noKeyCloud.Application;
 using noKeyCloud.Infrastructure;
 using Scalar.AspNetCore;
@@ -9,9 +10,7 @@ namespace noKeyCloud.api;
 
 public class Program
 {
-    /// <summary>
-    /// Main Program Entrypoint
-    /// </summary>
+
     public static void Main()
     {
         DotNetEnv.Env.Load();
@@ -51,24 +50,20 @@ public class Program
 
         builder.Services.AddAntiforgery(options =>
         {
-            options.HeaderName = "X-CSRF-TOKEN";              
+            options.HeaderName = "X-CSRF-TOKEN";
 
-            options.Cookie.Name = ".NoKeyCloud.Antiforgery";               
+            options.Cookie.Name = ".NoKeyCloud.Antiforgery";
+            options.Cookie.HttpOnly = true;
             options.Cookie.SecurePolicy = CookieSecurePolicy.Always;
             options.Cookie.SameSite = SameSiteMode.Strict;
             options.Cookie.IsEssential = true;
 
-            options.SuppressXFrameOptionsHeader = true;       
+            options.SuppressXFrameOptionsHeader = true;
         });
 
         builder.Services.AddControllers(options =>
         {
-            options.Filters.Add(new AutoValidateAntiforgeryTokenAttribute());
-        });
-
-        builder.Services.AddControllers(options =>
-        {
-            options.Filters.Add(new AutoValidateAntiforgeryTokenAttribute());
+            options.Filters.Add(new ValidateAntiforgeryTokenAttribute());
         });
 
         builder.Services.AddHsts(options =>
@@ -82,8 +77,6 @@ public class Program
             options.RedirectStatusCode = StatusCodes.Status308PermanentRedirect;
             options.HttpsPort = 443;
         });
-
-        builder.Services.AddControllers();
 
         builder.Services.AddOpenApi();
 
@@ -124,22 +117,6 @@ public class Program
 
             await next(context);
         });
-
-        app.Use((context, next) =>
-        {
-            var requestPath = context.Request.Path.Value;
-
-            if (string.Equals(requestPath, "/", StringComparison.OrdinalIgnoreCase)
-                || string.Equals(requestPath, "/index.html", StringComparison.OrdinalIgnoreCase))
-            {
-                var tokenSet = antiforgery.GetAndStoreTokens(context);
-                context.Response.Cookies.Append("XSRF-TOKEN", tokenSet.RequestToken!,
-                    new CookieOptions { HttpOnly = false });
-            }
-
-            return next(context);
-        });
-
 
         app.UseContentSecurityPolicy();
         //app.UseHttpsRedirection();

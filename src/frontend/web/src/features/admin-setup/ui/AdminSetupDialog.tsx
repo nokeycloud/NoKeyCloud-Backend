@@ -14,6 +14,7 @@ import {
 } from "@/shared/ui/alert-dialog";
 import { prepareRegistration } from "@/shared/security";
 import { backendBaseUrl } from "@/shared/config";
+import { customFetch } from "@/shared/api";
 import { BackupCodesDialog } from "@/features/backup-codes";
 
 interface AdminSetupDialogProps {
@@ -48,7 +49,7 @@ export function AdminSetupDialog({ isOpen, onComplete }: AdminSetupDialogProps) 
 
             const cryptoPayload = await prepareRegistration(username, password);
 
-            const response = await fetch(`${backendBaseUrl}/api/Authenticate/register`, {
+            const response = await customFetch(`${backendBaseUrl}/api/Authenticate/register`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({

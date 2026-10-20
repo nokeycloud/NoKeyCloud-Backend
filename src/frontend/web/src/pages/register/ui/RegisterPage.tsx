@@ -3,6 +3,7 @@ import {RegisterForm} from "@/widgets/register-form";
 import {type ActionFunctionArgs, useActionData, useNavigate, useNavigation} from "react-router";
 import {prepareRegistration} from "@/shared/security";
 import {backendBaseUrl} from "@/shared/config";
+import {customFetch} from "@/shared/api";
 import {BackupCodesDialog} from "@/features/backup-codes";
 
 export async function registerAction({request}: ActionFunctionArgs) {
@@ -33,7 +34,7 @@ export async function registerAction({request}: ActionFunctionArgs) {
     try {
         const cryptoPayload = await prepareRegistration(username || email, password);
 
-        const response = await fetch(`${backendBaseUrl}/api/Authenticate/register`, {
+        const response = await customFetch(`${backendBaseUrl}/api/Authenticate/register`, {
             method: "POST",
             headers: {"Content-Type": "application/json"},
             body: JSON.stringify({
