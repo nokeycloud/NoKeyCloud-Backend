@@ -13,7 +13,7 @@ public class RegisterUserHandler(IUserRepository userRepository, IFolderReposito
 {
     public async Task<Result> Handle(RegisterUserCommand request, CancellationToken cancellationToken)
     {
-        bool isFirstUser = !await userRepository.HasAnyUsersAsync(cancellationToken);
+        var isFirstUser = !await userRepository.HasAnyUsersAsync(cancellationToken);
         RegisterInvite? validInvite = null;
         
         
@@ -28,25 +28,28 @@ public class RegisterUserHandler(IUserRepository userRepository, IFolderReposito
                 return Result.Failure("Invalid, expired, or already used invite code.");
         }
         
+        var normalizedUsername = request.Username.Trim().ToLowerInvariant();
+        var normalizedEmail = string.IsNullOrWhiteSpace(request.Email) ? null : request.Email.Trim().ToLowerInvariant();
+        
+        var userExists = await userRepository.UserExistsAsync(normalizedUsername, normalizedEmail, cancellationToken);
+        if (userExists)
+        {
+            return Result.Failure("User with the same username or email already exists.");
+        }
+        
         try
         {
             var userId = Guid.NewGuid();
             
             var user = new User(
                 userId,
-                request.Email, 
-                request.Username, 
-                request.Salt, 
-                request.Verifier, 
+                request.UserIdentifier,
+                normalizedEmail, 
+                normalizedUsername, 
+                request.RegistrationRecord, 
                 request.EncryptedMasterKey, 
                 request.KeySalt,
                 isAdmin: isFirstUser);
-
-
-            if (user is null)
-            {
-                return Result.Failure("Failed to create user.");
-            }
 
             var temporaryNameBytes = Array.Empty<byte>();
             

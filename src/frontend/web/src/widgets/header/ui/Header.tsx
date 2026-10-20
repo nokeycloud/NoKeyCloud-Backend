@@ -1,4 +1,3 @@
-import { ThemeToggle } from "@/features/theme-switcher";
 import { Link, useLocation, useNavigate } from "react-router";
 import { Button } from "@/shared/ui/button";
 import { useAuth } from "@/entities/session";
@@ -22,7 +21,6 @@ export function Header({ profileMenuSlot }: HeaderProps) {
             </Link>
 
             <div className="flex items-center gap-3">
-                <ThemeToggle />
                 {auth.status === "loading" ? (
                     <div className="h-8 w-8 rounded-full bg-muted animate-pulse" />
                 ) : auth.status === "authenticated" ? (

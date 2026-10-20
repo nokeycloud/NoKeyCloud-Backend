@@ -12,6 +12,19 @@ import {
     Folder,
     Download
 } from "lucide-react";
+import {
+    Windows95GpuJpegFile,
+    Windows95GurichTextFile,
+    WindowsVideoFile,
+    Windows95WaveSound,
+    WindowsSystemFile,
+    WindowsZipFile,
+    Windows95File,
+    ProgmanIcon16,
+    WindowsFolder,
+    Windows95MyComputer,
+    Windows95StartupDiskWizard
+} from "react-old-icons";
 import {useNavigate} from "react-router";
 import {useEffect, useState} from "react";
 import {backendBaseUrl} from "@/shared/config";
@@ -38,44 +51,46 @@ import {
 } from "@/entities/folder";
 import {decryptBytes, decryptString, importKey} from "@/shared/security";
 import {customFetch} from "@/shared/api";
+import { useTheme } from "@/app/providers/ThemeProvider";
 
-function getFileIcon(filename: string) {
+function getFileIcon(filename: string, theme: string) {
+    const isWin69 = theme === "win69";
     const ext = filename.split('.').pop()?.toLowerCase();
     switch (ext) {
         case 'jpg':
         case 'jpeg':
         case 'png':
         case 'gif':
-            return <ImageIcon className="h-5 w-5 text-purple-500"/>;
+            return isWin69 ? <Windows95GpuJpegFile size={24} /> : <ImageIcon className="h-5 w-5 text-purple-500"/>;
         case 'pdf':
         case 'txt':
         case 'doc':
         case 'docx':
         case 'md':
-            return <FileText className="h-5 w-5 text-orange-500"/>;
+            return isWin69 ? <Windows95GurichTextFile size={24} /> : <FileText className="h-5 w-5 text-orange-500"/>;
         case 'mp4':
         case 'mkv':
         case 'avi':
-            return <Video className="h-5 w-5 text-red-500"/>;
+            return isWin69 ? <WindowsVideoFile size={24} /> : <Video className="h-5 w-5 text-red-500"/>;
         case 'mp3':
         case 'wav':
         case 'flac':
-            return <Music className="h-5 w-5 text-yellow-500"/>;
+            return isWin69 ? <Windows95WaveSound size={24} /> : <Music className="h-5 w-5 text-yellow-500"/>;
         case 'js':
         case 'cs' :
         case 'py' :
         case 'java' :
         case 'cpp' :
-            return <Code className="h-5 w-5 text-green-500"/>;
+            return isWin69 ? <WindowsSystemFile size={24} /> : <Code className="h-5 w-5 text-green-500"/>;
         case 'zip':
         case 'rar':
         case '7z' :
         case 'tar.gz' :
         case 'tar':
         case 'tar.bz2' :
-            return <Archive className="h-5 w-5 text-stone-500"/>;
+            return isWin69 ? <WindowsZipFile size={24} /> : <Archive className="h-5 w-5 text-stone-500"/>;
         default:
-            return <FileIcon className="h-5 w-5 text-slate-500"/>;
+            return isWin69 ? <Windows95File size={24} /> : <FileIcon className="h-5 w-5 text-slate-500"/>;
     }
 }
 
@@ -97,6 +112,7 @@ interface UIFolder extends FolderResponse {
 
 export function FileExplorer({ folderId, rootFolderId }: FileExplorerProps) {
     const navigate = useNavigate();
+    const { theme } = useTheme();
     const [data, setData] = useState<{ folders: UIFolder[], files: UIFile[] } | null>(null);
     const [isLoading, setIsLoading] = useState(true);
     const [sortConfig, setSortConfig] = useState<{ key: SortKey; direction: SortDirection }>({
@@ -369,10 +385,16 @@ export function FileExplorer({ folderId, rootFolderId }: FileExplorerProps) {
             <div className="flex items-center gap-2 mb-4 bg-muted/30 p-2 rounded-md">
                 <Button variant="ghost" size="icon" onClick={() => navigateToSubFolder(rootFolderId, "Home")}
                         title="Home">
-                    <Home className="h-4 w-4"/>
+                    {theme === "win69"
+                        ? <Windows95MyComputer size={24} />
+                        : <Home className="h-4 w-4"/>
+                    }
                 </Button>
                 <Button variant="ghost" size="icon" onClick={goBack} disabled={folderId === rootFolderId} title="Back">
-                    <ArrowLeft className="h-4 w-4"/>
+                    {theme === "win69"
+                        ? <ProgmanIcon16 size={24} />
+                        : <ArrowLeft className="h-4 w-4"/>
+                    }
                 </Button>
 
                 <div className="h-4 w-px bg-border mx-2"/>
@@ -412,7 +434,10 @@ export function FileExplorer({ folderId, rootFolderId }: FileExplorerProps) {
                                 onClick={() => navigateToSubFolder(folder.folderId, folder.decryptedName)}
                             >
                                 <TableCell className="font-medium flex items-center gap-3">
-                                    <Folder className="h-5 w-5 text-blue-500 fill-blue-500/20"/>
+                                    {theme === "win69"
+                                        ? <WindowsFolder size={24} />
+                                        : <Folder className="h-5 w-5 text-blue-500 fill-blue-500/20"/>
+                                    }
                                     <span className="truncate max-w-100"
                                           title={folder.decryptedName}>{folder.decryptedName}</span>
                                 </TableCell>
@@ -434,9 +459,8 @@ export function FileExplorer({ folderId, rootFolderId }: FileExplorerProps) {
                                     }
                                 >
                                     <TableCell className="font-medium flex items-center gap-3">
-                                        {getFileIcon(file.decryptedName)}
-                                        <span className="truncate max-w-100"
-                                              title={file.decryptedName}>{file.decryptedName}</span>
+                                        {getFileIcon(file.decryptedName, theme)}
+                                        <span className="truncate max-w-100" title={file.decryptedName}>{file.decryptedName}</span>
                                     </TableCell>
                                     <TableCell className="text-muted-foreground whitespace-nowrap">
                                         {format(new Date(file.updatedAt), "dd-MM-yyyy HH:mm")}
@@ -447,7 +471,10 @@ export function FileExplorer({ folderId, rootFolderId }: FileExplorerProps) {
                                 </ContextMenuTrigger>
                                 <ContextMenuContent className="w-48">
                                     <ContextMenuItem onClick={() => handleDownload(file.filesId, file.decryptedName)}>
-                                        <Download className="mr-2 h-2 w-2" />
+                                        {theme === "win69"
+                                            ? <Windows95StartupDiskWizard size={24} />
+                                            : <Download className="mr-2 h-2 w-2" />
+                                        }
                                         Download
                                     </ContextMenuItem>
                                 </ContextMenuContent>

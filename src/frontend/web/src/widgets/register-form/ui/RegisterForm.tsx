@@ -14,6 +14,8 @@ import {
 } from "@/shared/ui/field.tsx"
 import {Input} from "@/shared/ui/input.tsx"
 import {Form} from "react-router";
+import {PasswordStrengthMeter, usePasswordStrength} from "@/features/password-strength";
+import {useState} from "react";
 
 interface RegisterFormProps extends React.ComponentProps<typeof Card> {
     error?: string;
@@ -21,6 +23,9 @@ interface RegisterFormProps extends React.ComponentProps<typeof Card> {
 }
 
 export function RegisterForm({error, isSubmitting = false, ...props}: RegisterFormProps) {
+    const [password, setPassword] = useState("");
+    const strength = usePasswordStrength(password);
+
     return (
         <Card {...props}>
             <CardHeader>
@@ -47,7 +52,8 @@ export function RegisterForm({error, isSubmitting = false, ...props}: RegisterFo
                         </Field>
                         <Field>
                             <FieldLabel htmlFor="password">Password</FieldLabel>
-                            <Input id="password" name="password" type="password" required/>
+                            <Input id="password" name="password" type="password" required value={password} onChange={(e) => setPassword(e.target.value)}/>
+                            <PasswordStrengthMeter strength={strength} />
                             <FieldDescription>
                                 Must be at least 12 characters long.
                             </FieldDescription>
