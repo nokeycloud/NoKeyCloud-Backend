@@ -7,13 +7,20 @@ import {Avatar, AvatarFallback} from "@/shared/ui/avatar";
 import {logoutUserApi} from "@/shared/api";
 import {setGuest, useAuth} from "@/entities/session";
 import {Settings, LogOut, ShieldUser} from "lucide-react";
+import {
+    WindowsTaskman,
+    Windows95Pifmgr17,
+    WindowsShutDown
+} from "react-old-icons"
 import { toast } from "sonner";
 import {useState} from "react";
 import {SettingsDialog} from "@/features/settings";
+import { useTheme } from "@/app/providers/ThemeProvider";
 
 export function UserProfileMenu() {
     const navigate = useNavigate();
     const auth = useAuth();
+    const { theme } = useTheme();
 
     const [showSettings, setShowSettings] = useState(false);
 
@@ -49,19 +56,28 @@ export function UserProfileMenu() {
 
                         {auth.user.isAdmin && (
                             <DropdownMenuItem onClick={() => navigate("/admin-panel")}>
-                                <ShieldUser className="mr-2 h-4 w-4"/>
+                                {theme === "win69"
+                                    ? <Windows95Pifmgr17 size={24} />
+                                    : <ShieldUser className="mr-2 h-4 w-4"/>
+                                }
                                 Admin Panel
                             </DropdownMenuItem>
                         )}
 
                         <DropdownMenuItem onClick={() => setShowSettings(true)}>
-                            <Settings className="mr-2 h-4 w-4"/>
+                            {theme === "win69"
+                                ? <WindowsTaskman size={24} />
+                                : <Settings className="mr-2 h-4 w-4"/>
+                            }
                             Settings
                         </DropdownMenuItem>
 
                         <DropdownMenuItem onClick={handleLogout}
                                           className="text-red-500 focus:text-red-500 focus:bg-red-500/10">
-                            <LogOut className="mr-2 h-4 w-4"/>
+                            {theme === "win69"
+                                ? <WindowsShutDown size={24} />
+                                : <LogOut className="mr-2 h-4 w-4"/>
+                            }
                             Logout
                         </DropdownMenuItem>
                     </DropdownMenuGroup>

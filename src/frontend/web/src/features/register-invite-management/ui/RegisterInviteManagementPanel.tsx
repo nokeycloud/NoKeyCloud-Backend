@@ -28,6 +28,8 @@ import {
 import {backendBaseUrl} from "@/shared/config";
 import type {RegisterInviteResponse} from "@/entities/register-invite";
 import {customFetch} from "@/shared/api";
+import {VisualStudioCLOCK, Windows95MainCpl2, WindowsShellIcon142} from "react-old-icons";
+import { useTheme } from "@/app/providers/ThemeProvider";
 
 function CountdownTimer({expiresAt}: { expiresAt: string | null }) {
     const [timeLeft, setTimeLeft] = useState("");
@@ -80,6 +82,7 @@ export function RegisterInviteManagementPanel() {
     const [isLoading, setIsLoading] = useState(true);
     const [duration, setDuration] = useState("24");
     const [selectedQrCode, setSelectedQrCode] = useState<string | null>(null);
+    const { theme } =useTheme();
 
     const fetchInvites = useCallback(async () => {
         try {
@@ -174,7 +177,10 @@ export function RegisterInviteManagementPanel() {
                 <div className="flex flex-col sm:flex-row items-end justify-start gap-4">
                     <div className="flex flex-col gap-2 w-full sm:w-auto">
                         <label className="text-sm font-medium flex items-center gap-2">
-                            <Clock className="w-4 h-4 text-muted-foreground"/>
+                            {theme === "win69"
+                                ? <VisualStudioCLOCK size={24} />
+                                : <Clock className="w-4 h-4 text-muted-foreground"/>
+                            }
                             Valid Duration
                         </label>
                         <Select value={duration} onValueChange={handleDurationChange}>
@@ -291,31 +297,39 @@ export function RegisterInviteManagementPanel() {
                                         </TableCell>
 
                                         <TableCell className="text-right space-x-2">
-                                            <Button
-                                                variant="ghost"
-                                                size="icon"
-                                                onClick={() => setSelectedQrCode(item.code)}
-                                                title="Show QR Code"
-                                            >
-                                                <QrCode className="w-4 h-4"/>
-                                            </Button>
-                                            <Button
-                                                variant="ghost"
-                                                size="icon"
-                                                onClick={() => handleCopyLink(item.code)}
-                                                title="Copy Link"
-                                            >
-                                                <Copy className="w-4 h-4"/>
-                                            </Button>
-                                            <Button
-                                                variant="ghost"
-                                                size="icon"
-                                                className="text-destructive hover:bg-destructive/10 hover:text-destructive"
-                                                onClick={() => handleRevoke(item.id)}
-                                                title="Revoke Code"
-                                            >
-                                                <Trash2 className="w-4 h-4"/>
-                                            </Button>
+                                            <div className="flex items-center justify-end gap-2">
+                                                <Button
+                                                    variant="ghost"
+                                                    size="icon"
+                                                    onClick={() => setSelectedQrCode(item.code)}
+                                                    title="Show QR Code"
+                                                >
+                                                    <QrCode className="w-4 h-4"/>
+                                                </Button>
+                                                <Button
+                                                    variant="ghost"
+                                                    size="icon"
+                                                    onClick={() => handleCopyLink(item.code)}
+                                                    title="Copy Link"
+                                                >
+                                                    {theme === "win69"
+                                                        ? <Windows95MainCpl2 size={24} />
+                                                        : <Copy className="w-4 h-4"/>
+                                                    }
+                                                </Button>
+                                                <Button
+                                                    variant="ghost"
+                                                    size="icon"
+                                                    className="text-destructive hover:bg-destructive/10 hover:text-destructive"
+                                                    onClick={() => handleRevoke(item.id)}
+                                                    title="Revoke Code"
+                                                >
+                                                    {theme === "win69"
+                                                        ? <WindowsShellIcon142 size={24} />
+                                                        : <Trash2 className="w-4 h-4"/>
+                                                    }
+                                                </Button>
+                                            </div>
                                         </TableCell>
                                     </TableRow>
                                 );
@@ -350,7 +364,10 @@ export function RegisterInviteManagementPanel() {
                                     className="w-full"
                                     onClick={() => handleCopyLink(selectedQrCode)}
                                 >
-                                    <Copy className="w-4 h-4 mr-2"/>
+                                    {theme === "win69"
+                                        ? <Windows95MainCpl2 size={24} />
+                                        : <Copy className="w-4 h-4 mr-2"/>
+                                    }
                                     Copy Registration Link
                                 </Button>
                             </div>

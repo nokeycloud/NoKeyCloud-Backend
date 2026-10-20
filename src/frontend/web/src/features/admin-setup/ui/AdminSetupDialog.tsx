@@ -12,9 +12,10 @@ import {
     AlertDialogHeader,
     AlertDialogTitle,
 } from "@/shared/ui/alert-dialog";
-import { prepareRegistration } from "@/shared/security";
+import { prepareRegistration, registrationOpaque} from "@/shared/security";
 import { backendBaseUrl } from "@/shared/config";
 import { BackupCodesDialog } from "@/features/backup-codes";
+import {PasswordStrengthMeter, usePasswordStrength} from "@/features/password-strength";
 
 interface AdminSetupDialogProps {
     isOpen: boolean;
@@ -29,6 +30,7 @@ export function AdminSetupDialog({ isOpen, onComplete }: AdminSetupDialogProps) 
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [error, setError] = useState("");
     const [recoveryCode, setRecoveryCode] = useState<string | null>(null);
+    const strength = usePasswordStrength(password);
 
     const handleSubmit = async (e: React.SyntheticEvent) => {
         e.preventDefault();
@@ -46,16 +48,25 @@ export function AdminSetupDialog({ isOpen, onComplete }: AdminSetupDialogProps) 
         try {
             setIsSubmitting(true);
 
-            const cryptoPayload = await prepareRegistration(username, password);
+            const responseInit = await registrationOpaque(password);
+
+            if ('error' in responseInit) {
+                setError(responseInit.error.errors.body.join(", ") || "Registration init failed.");
+                return;
+            }
+
+            const { userIdentifier, registrationRecord } = responseInit;
+
+            const cryptoPayload = await prepareRegistration(password);
 
             const response = await fetch(`${backendBaseUrl}/api/Authenticate/register`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
+                    userIdentifier: userIdentifier,
                     email: email,
                     username: username,
-                    salt: cryptoPayload.srpSaltBase64,
-                    verifier: cryptoPayload.srpVerifierBase64,
+                    registrationRecord: registrationRecord,
                     encryptedMasterKey: cryptoPayload.encryptedMasterKeyBase64,
                     keySalt: cryptoPayload.keySaltBase64,
                     recoveryEncryptedMasterKey: cryptoPayload.recoveryEncryptedMasterKeyBase64,
@@ -130,6 +141,7 @@ export function AdminSetupDialog({ isOpen, onComplete }: AdminSetupDialogProps) 
                                 disabled={isSubmitting}
                                 autoFocus
                             />
+                            <PasswordStrengthMeter strength={strength} />
                         </div>
 
                         <div className="grid gap-2">

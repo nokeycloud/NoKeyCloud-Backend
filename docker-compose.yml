@@ -25,14 +25,28 @@ services:
       POSTGRES_DB: ${POSTGRES_DB:-nokeycloud_db}
     volumes:
       - ./data/db_data:/var/lib/postgresql
+    healthcheck:
+     test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+     interval: 5s
+     timeout: 5s
+     retries: 10
+     start_period: 10s
     restart: unless-stopped
 
   redis:
     image: redis:7-alpine
     container_name: nokeycloud-redis
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-nokeycloud_redis_password}
     command: redis-server --requirepass ${REDIS_PASSWORD:-nokeycloud_redis_password}
     volumes:
       - ./data/redis_data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli --no-auth-warning -a \"$${REDIS_PASSWORD}\" ping | grep -q PONG"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
     restart: unless-stopped
     
   setup-permissions:
@@ -41,13 +55,14 @@ services:
     restart: "no"
     volumes:
       - ./data:/host_data
-    command: sh -c "mkdir -p /host_data/upload && chown -R 1654:1654 /host_data/upload"
+      - shared:/shared_data
+    command: sh -c "mkdir -p /host_data/upload /host_data/app_data /host_data/app_config
+                && chown -R 1654:1654 /host_data/upload /host_data/app_data /host_data/app_config /shared_data"
 
   backend:
     build:
       context: .
       dockerfile: src/backend/noKeyCloud.api/Dockerfile
-      network: host
     container_name: nokeycloud-backend
     environment:
       - ASPNETCORE_ENVIRONMENT=Production
@@ -56,27 +71,41 @@ services:
       - JwtSettings__SecretKey=${JWT_SECRET:-zwotTvJmQiQvvipwDfFZ0+r7Go3iwBbvaGlqSb0G9JhxhhCYi9K0ZIAI+tJY2BfdqdG7e+ZcAupA+MCC+3x4RHQFQt2Ra8a5JN19YYQkwbpgBKp6+Hfrlvpl8hGR/VLU1s16Laaoe3CL5IbpyE2JadjRubw4Xaegx2qpeSQ0THE=}
       - FRONTEND_URL=https://${DOMAIN_NAME:-localhost}:8743
       - BASE_UPLOAD_STORAGE_PATH=${BASE_UPLOAD_STORAGE_PATH:-/uploads}
+      - OPAQUE_SERVER_SETUP_KEY_PATH=${OPAQUE_SERVER_SETUP_KEY_PATH:-/data/opaque_server_setup.key}
+      - OPAQUE_PUBLIC_KEY_EXPORT_PATH=${OPAQUE_PUBLIC_KEY_EXPORT_PATH:-/shared/opaque_server_public_key.key}
     volumes:
       - ./data/app_data:/data
       - ./data/app_config:/config
       - ./data/upload:/uploads
+      - shared:/shared
     depends_on:
       setup-permissions:
         condition: service_completed_successfully
       db:
-        condition: service_started
+        condition: service_healthy
       redis:
-        condition: service_started
+        condition: service_healthy
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8080/api/Status/ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 15s
 
   frontend:
     build:
       context: src/frontend/web
       dockerfile: Dockerfile
-      network: host
       args:
         - VITE_BACKEND_URL=https://${DOMAIN_NAME:-localhost}:8743
     container_name: nokeycloud-frontend
+    volumes:
+      - shared:/shared:ro
     depends_on:
-      - backend
+      backend:
+        condition: service_healthy
     restart: unless-stopped
+
+volumes:
+  shared:

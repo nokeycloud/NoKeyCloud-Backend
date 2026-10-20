@@ -12,8 +12,8 @@ public class UserConfiguration : IEntityTypeConfiguration<User>
         builder.ToTable("Users");
         builder.HasKey(p => p.Id);
         
-        //Relations
-        
-        
+        builder.HasIndex(u => u.UserIdentifier).IsUnique();
+        builder.HasIndex(u => u.Username).IsUnique();
+        builder.HasIndex(u => u.Email).IsUnique();
     }
 }

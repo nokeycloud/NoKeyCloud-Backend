@@ -11,7 +11,7 @@ export function Footer() {
 
                 <div className="flex items-center gap-4">
                     <a
-                        href="https://github.com/Pixel12pixel/noKeyCloud"
+                        href="https://github.com/nokeycloud/NoKeyCloud"
                         target="_blank"
                         rel="noreferrer"
                         className="flex items-center gap-2 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"

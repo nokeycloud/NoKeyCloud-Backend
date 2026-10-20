@@ -1,6 +1,5 @@
 @import "tailwindcss";
 @import "tw-animate-css";
-@import "shadcn/tailwind.css";
 @import "@fontsource-variable/ibm-plex-sans";
 
 @custom-variant dark (&:is(.dark *));
@@ -115,6 +114,97 @@
     --sidebar-accent-foreground: oklch(0.985 0 0);
     --sidebar-border: oklch(1 0 0 / 10%);
     --sidebar-ring: oklch(0.556 0 0);
+}
+
+.win69 {
+    --background: oklch(0.82 0 0);
+    --foreground: oklch(0 0 0);
+    --card: oklch(0.82 0 0);
+    --card-foreground: oklch(0 0 0);
+    --popover: oklch(0.82 0 0);
+    --popover-foreground: oklch(0 0 0);
+    --primary: oklch(0.3 0.1 260);
+    --primary-foreground: oklch(1 0 0);
+    --secondary: oklch(0.9 0 0);
+    --secondary-foreground: oklch(0 0 0);
+    --muted: oklch(0.7 0 0);
+    --muted-foreground: oklch(0.3 0 0);
+    --accent: oklch(0.3 0.1 260);
+    --accent-foreground: oklch(1 0 0);
+    --destructive: oklch(0.5 0.2 20);
+    --border: oklch(0.4 0 0);
+    --input: oklch(1 0 0);
+    --ring: oklch(0 0 0);
+    --radius: 0rem;
+}
+
+.win69 [data-slot="button"] {
+    background-color: #c0c0c0 !important;
+    color: #000000 !important;
+    border-width: 2px !important;
+    border-style: solid !important;
+
+    border-top-color: #ffffff !important;
+    border-left-color: #ffffff !important;
+    border-right-color: #000000 !important;
+    border-bottom-color: #000000 !important;
+    box-shadow: inset 1px 1px 0px #dfdfdf, inset -1px -1px 0px #808080 !important;
+
+    border-radius: 0 !important;
+    transition: none !important;
+
+    font-family: 'MS Sans Serif', 'Microsoft Sans Serif', Arial, sans-serif !important;
+}
+
+.win69 [data-slot="button"]:active {
+    border-top-color: #000000 !important;
+    border-left-color: #000000 !important;
+    border-right-color: #ffffff !important;
+    border-bottom-color: #ffffff !important;
+    box-shadow: inset 1px 1px 0px #808080, inset -1px -1px 0px #dfdfdf !important;
+}
+
+.win69 [data-slot="button"]:active > * {
+    transform: translate(1px, 1px);
+}
+
+.win69 [data-slot="button"]:focus-visible {
+    outline: 1px dotted #000000 !important;
+    outline-offset: -4px !important;
+    ring: 0 !important;
+}
+
+.win69 .text-blue-500, .win69 .text-primary {
+    color: #000080 !important;
+    stroke: #000080 !important;
+}
+.win69 .text-purple-500 {
+    color: #800080 !important;
+    stroke: #800080 !important;
+}
+.win69 .text-orange-500 {
+    color: #808000 !important;
+    stroke: #808000 !important;
+}
+.win69 .text-red-500, .win69 .text-destructive {
+    color: #FF0000 !important;
+    stroke: #FF0000 !important;
+}
+.win69 .text-yellow-500 {
+    color: #FFFF00 !important;
+    stroke: #FFFF00 !important;
+}
+.win69 .text-green-500 {
+    color: #008000 !important;
+    stroke: #008000 !important;
+}
+.win69 .text-slate-500, .win69 .text-stone-500, .win69 .text-muted-foreground {
+    color: #808080 !important;
+    stroke: #808080 !important;
+}
+.win69 .text-foreground {
+    color: #000000 !important;
+    stroke: #000000 !important;
 }
 
 @layer base {
