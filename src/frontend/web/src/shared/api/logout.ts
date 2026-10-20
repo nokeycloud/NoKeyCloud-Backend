@@ -1,16 +1,23 @@
-import { backendBaseUrl } from '@/shared/config';
-import {customFetch} from "@/shared/api";
+import { backendBaseUrl } from "@/shared/config";
+import { customFetch } from "@/shared/api";
+import { invalidateCsrfToken } from "./csrf";
 
 export async function logoutUserApi(): Promise<void> {
-    const response = await customFetch(`${backendBaseUrl}/api/Authenticate/logout`, {
-        method: 'POST',
-        credentials: 'include',
-        headers: {
-            'Content-Type': 'application/json'
-        }
-    });
+  const response = await customFetch(
+    `${backendBaseUrl}/api/Authenticate/logout`,
+    {
+      method: "POST",
+      credentials: "include",
+      headers: {
+        "Content-Type": "application/json",
+      },
+    },
+  );
 
-    if (!response.ok) {
-        console.error('Logout failed on the backend, falling back to local clearance');
-    }
+  if (!response.ok) {
+    console.error(
+      "Logout failed on the backend, falling back to local clearance",
+    );
+  }
+  invalidateCsrfToken();
 }

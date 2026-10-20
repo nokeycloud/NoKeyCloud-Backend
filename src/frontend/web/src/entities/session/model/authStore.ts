@@ -1,4 +1,4 @@
-import {fetchCurrentUser, type UserProfileResponse} from "@/shared/api";
+import {fetchCurrentUser, customFetch, type UserProfileResponse} from "@/shared/api";
 import {decryptBytes, exportKey, importKey} from "@/shared/security";
 import {bytesToBase64, base64ToBytes} from "@/shared/lib";
 import {vaultKeys} from "@/entities/folder";
@@ -74,7 +74,7 @@ export async function refreshAuth() {
 
     if (!me) {
         try {
-            const refreshResponse = await fetch(`${backendBaseUrl}/api/Authenticate/refresh`, {
+            const refreshResponse = await customFetch(`${backendBaseUrl}/api/Authenticate/refresh`, {
                 method: "POST",
                 credentials: "include",
                 headers: { "Content-Type": "application/json" }

@@ -1,6 +1,8 @@
 import { backendBaseUrl, getTrustedOpaqueServerKey } from '@/shared/config';
 import * as opaque from "@serenity-kit/opaque";
-import {ServerIdentityMismatchError} from "./errors.ts";
+import { ServerIdentityMismatchError } from "./errors.ts";
+import { customFetch } from '@/shared/api';
+import { invalidateCsrfToken } from '@/shared/api/csrf';
 
 export interface LoginInitResponse {
     loginResponse: string;
@@ -14,11 +16,13 @@ export interface LoginVerifyResponse {
 }
 
 export const loginWithOpaque = async (username: string, password: string) => {
+    invalidateCsrfToken();
+
     const { clientLoginState, startLoginRequest } = opaque.client.startLogin({
         password,
     });
 
-    const initRes = await fetch(`${backendBaseUrl}/api/Authenticate/login/init`, {
+    const initRes = await customFetch(`${backendBaseUrl}/api/Authenticate/login/init`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ username, email: username, startLoginRequest: startLoginRequest })
@@ -42,7 +46,7 @@ export const loginWithOpaque = async (username: string, password: string) => {
         throw new ServerIdentityMismatchError();
     }
 
-    const verifyRes = await fetch(`${backendBaseUrl}/api/Authenticate/login/verify`, {
+    const verifyRes = await customFetch(`${backendBaseUrl}/api/Authenticate/login/verify`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',

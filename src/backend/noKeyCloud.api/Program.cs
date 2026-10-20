@@ -1,4 +1,7 @@
+using Microsoft.AspNetCore.Antiforgery;
+using Microsoft.AspNetCore.Mvc;
 using noKeyCloud.api.CustomMiddleware;
+using noKeyCloud.api.Filters;
 using noKeyCloud.Application;
 using noKeyCloud.Application.Abstractions.Services;
 using noKeyCloud.Infrastructure;
@@ -48,6 +51,24 @@ public class Program
         });
 
 
+        builder.Services.AddAntiforgery(options =>
+        {
+            options.HeaderName = "X-CSRF-TOKEN";
+
+            options.Cookie.Name = ".NoKeyCloud.Antiforgery";
+            options.Cookie.HttpOnly = true;
+            options.Cookie.SecurePolicy = CookieSecurePolicy.Always;
+            options.Cookie.SameSite = SameSiteMode.Strict;
+            options.Cookie.IsEssential = true;
+
+            options.SuppressXFrameOptionsHeader = true;
+        });
+
+        builder.Services.AddControllers(options =>
+        {
+            options.Filters.Add(new ValidateAntiforgeryTokenAttribute());
+        });
+
         builder.Services.AddHsts(options =>
         {
             options.Preload = true;
@@ -59,8 +80,6 @@ public class Program
             options.RedirectStatusCode = StatusCodes.Status308PermanentRedirect;
             options.HttpsPort = 443;
         });
-
-        builder.Services.AddControllers();
 
         builder.Services.AddOpenApi();
 

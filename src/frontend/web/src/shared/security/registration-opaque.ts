@@ -1,5 +1,6 @@
 import * as opaque from "@serenity-kit/opaque";
 import {backendBaseUrl, getTrustedOpaqueServerKey} from "@/shared/config";
+import {customFetch} from "@/shared/api";
 import {ServerIdentityMismatchError} from "./errors.ts";
 
 export interface RegistrationOpaque {
@@ -20,7 +21,7 @@ export async function registrationOpaque(password: string): Promise<Registration
 
     const { clientRegistrationState, registrationRequest } = opaque.client.startRegistration({ password });
 
-    const firstResponse = await fetch(`${backendBaseUrl}/api/Authenticate/register/init`, {
+    const firstResponse = await customFetch(`${backendBaseUrl}/api/Authenticate/register/init`, {
         method: "POST",
         headers: {"Content-Type": "application/json"},
         body: JSON.stringify({
