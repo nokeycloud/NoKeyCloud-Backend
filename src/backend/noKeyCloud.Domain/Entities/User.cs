@@ -10,7 +10,9 @@ public class User
     
     public Guid Id { get; private set; }
     
-    public string Email { get; private set; }
+    public Guid UserIdentifier { get; private set; }
+    
+    public string? Email { get; private set; }
     
     public string Username { get; private set; }
     
@@ -20,15 +22,15 @@ public class User
     
     public DateTime UpdatedAt { get; private set; }
     
-    public byte[] Salt { get; private set; }
-    
-    public byte[] Verifier { get; private set; }
+    public string RegistrationRecord { get; private set; }
     
     public byte[] EncryptedMasterKey { get; private set; }
     
     public byte[] KeySalt { get; private set; }
     
     public bool IsAdmin { get; private set; }
+    
+    public string Theme { get; private set; } = "dark";
     
     //Navigation
     
@@ -58,34 +60,27 @@ public class User
     
     //Validation
 
-    public User(Guid id, string email, string username, byte[] salt, byte[] verifier, byte[] encryptedMasterKey, byte[] keySalt, bool isAdmin = false)
+    public User(Guid id, Guid userIdentifier,string? email, string username, string registrationRecord, byte[] encryptedMasterKey, byte[] keySalt, bool isAdmin = false)
     {
         Id = id;
+        UserIdentifier = userIdentifier;
         Email = email;
         Username = username;
         IsActive = true;
-        Salt = salt;
-        Verifier = verifier;
+        RegistrationRecord = registrationRecord;
         EncryptedMasterKey = encryptedMasterKey;
         KeySalt = keySalt;
         CreatedAt = DateTime.UtcNow;
         UpdatedAt = CreatedAt;
         IsAdmin = isAdmin;
     }
-
-    public Result ChangePassword(byte[] salt, byte[] verifier)
+    
+    public void UpdateTheme(string theme)
     {
-        if (salt == null || verifier == null)
-        {
-            return Result.Failure("Salt and verifier cannot be null.");
-        }
-        Salt = salt;
-        Verifier = verifier;
+        Theme = theme;
         UpdatedAt = DateTime.UtcNow;
-        return Result.Success();
     }
-
-
+    
     //EF
     private User()
     {

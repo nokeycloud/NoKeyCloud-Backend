@@ -23,8 +23,18 @@ public class UserRepository : IUserRepository
 
     public async Task<User?> GetUserByUsernameOrEmailAsync(string identifier, CancellationToken cancellationToken)
     {
-        return await _context.Users.FirstOrDefaultAsync(u => u.Username == identifier || u.Email == identifier,
-            cancellationToken);
+        var normalized = identifier.Trim().ToLowerInvariant();
+        
+        if (normalized.Contains('@'))
+        {
+            var userByEmail = await _context.Users
+                .FirstOrDefaultAsync(u => u.Email == normalized, cancellationToken);
+            if (userByEmail != null) return userByEmail;
+        }
+        
+        var userByUsername = await _context.Users
+            .FirstOrDefaultAsync(u => u.Username == normalized, cancellationToken);
+        return userByUsername ?? null;
     }
     
     public async Task<User?> GetUserByUserId(Guid userId, CancellationToken cancellationToken)
@@ -53,5 +63,20 @@ public class UserRepository : IUserRepository
     public async Task<bool> HasAnyUsersAsync(CancellationToken cancellationToken = default)
     {
         return await _context.Users.AnyAsync(cancellationToken);
+    }
+    
+    public async Task<bool> UserExistsAsync(string username, string? email, CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(email))
+        {
+            return await _context.Users.AnyAsync(u => u.Username == username, cancellationToken);
+        }
+        return await _context.Users.AnyAsync(u => u.Username == username || u.Email == email, cancellationToken);
+    }
+    
+    public async Task UpdateUserAsync(User user, CancellationToken cancellationToken = default)
+    {
+        _context.Users.Update(user);
+        await _context.SaveChangesAsync(cancellationToken);
     }
 }
