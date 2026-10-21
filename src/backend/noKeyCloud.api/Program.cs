@@ -47,6 +47,24 @@ public class Program
         });
 
 
+        builder.Services.AddAntiforgery(options =>
+        {
+            options.HeaderName = "X-CSRF-TOKEN";
+
+            options.Cookie.Name = ".NoKeyCloud.Antiforgery";
+            options.Cookie.HttpOnly = true;
+            options.Cookie.SecurePolicy = CookieSecurePolicy.Always;
+            //options.Cookie.SameSite = SameSiteMode.Strict;
+            options.Cookie.IsEssential = true;
+
+            options.SuppressXFrameOptionsHeader = true;
+        });
+
+        builder.Services.AddControllers(options =>
+        {
+            options.Filters.Add(new ValidateAntiforgeryTokenAttribute());
+        });
+
         builder.Services.AddHsts(options =>
         {
             options.Preload = true;

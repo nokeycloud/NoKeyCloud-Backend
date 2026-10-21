@@ -91,5 +91,19 @@ public class FileRepository : IFileRepository
         return fileContent;
     }
 
+    public async Task<bool> DeleteFile(Guid userId, Guid fileId, CancellationToken cancellationToken)
+    {
+        var file = await GetFileById(userId, fileId, cancellationToken);
+        System.IO.File.Delete(file.Item1.StoragePath);
+        if (System.IO.File.Exists(file.Item1.StoragePath))
+        {
+            throw new Exception("Couldn't delete the file content.");
+        }
+        var result = _context.Files.Remove(file.Item1);
+        var affectedRows = await _context.SaveChangesAsync(cancellationToken);
+        return affectedRows > 0;
+
+    }
+
 
 }
