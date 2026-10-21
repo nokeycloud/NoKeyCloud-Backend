@@ -1,5 +1,5 @@
 import { type ActionFunctionArgs, redirect, useActionData, useNavigation, useNavigate } from "react-router";
-import {importKey, loginWithSRP, deriveKey, decryptBytes} from "@/shared/security";
+import {importKey, loginWithOpaque, deriveKey, decryptBytes} from "@/shared/security";
 import { LoginForm } from "@/widgets/login-form";
 import { useEffect } from "react";
 import {refreshAuth, useAuth, setMasterKey, getAuthState} from "@/entities/session";
@@ -15,7 +15,7 @@ export async function loginAction({ request }: ActionFunctionArgs) {
     }
 
     try {
-        const authData = await loginWithSRP(identifier, password);
+        const authData = await loginWithOpaque(identifier, password);
 
         const keySaltBytes = base64ToBytes(authData.keySalt);
         const encryptedMasterKeyBytes = base64ToBytes(authData.encryptedMasterKey);

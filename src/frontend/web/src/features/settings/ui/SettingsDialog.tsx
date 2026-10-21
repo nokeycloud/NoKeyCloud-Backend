@@ -1,4 +1,9 @@
-import {User, Shield} from "lucide-react";
+import {User, Shield, Palette} from "lucide-react";
+import {
+    ProgmanIcon12,
+    WindowsPaint3,
+    ProgmanIcon8
+} from "react-old-icons"
 import {Button} from "@/shared/ui/button";
 import {Input} from "@/shared/ui/input";
 import {Label} from "@/shared/ui/label";
@@ -16,6 +21,17 @@ import {
     TabsTrigger,
 } from "@/shared/ui/tabs";
 import {useAuth} from "@/entities/session";
+import {useTheme} from "@/app/providers/ThemeProvider";
+import {
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
+} from "@/shared/ui/select";
+import {customFetch} from "@/shared/api";
+import {backendBaseUrl} from "@/shared/config";
+import {toast} from "sonner";
 
 interface SettingsDialogProps {
     open: boolean;
@@ -24,6 +40,28 @@ interface SettingsDialogProps {
 
 export function SettingsDialog({open, onOpenChange}: SettingsDialogProps) {
     const auth = useAuth();
+    const { theme, setTheme } = useTheme();
+
+    const handleThemeChange = async (newTheme: string | null) => {
+        if (!newTheme) return;
+
+        const themeToApply = newTheme as "light" | "dark" | "win69";
+        setTheme(themeToApply);
+
+        if (auth.status === "authenticated") {
+            try {
+                const res = await customFetch(`${backendBaseUrl}/api/Users/theme`, {
+                    method: "PATCH",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ theme: themeToApply })
+                });
+
+                if (!res.ok) throw new Error("Failed to save theme");
+            } catch (err) {
+                toast.error("Could not save theme preference to your account.");
+            }
+        }
+    };
 
     return (
         <Dialog open={open} onOpenChange={onOpenChange}>
@@ -45,12 +83,25 @@ export function SettingsDialog({open, onOpenChange}: SettingsDialogProps) {
                             variant="line" className="flex flex-col w-48 h-full items-stretch justify-start gap-2 p-3 rounded-none">
                             <TabsTrigger value="account"
                                          className="justify-start data-[state=active]:bg-background data-[state=active]:shadow-sm">
-                                <User className="w-4 h-4 mr-2"/>
+                                {theme === "win69"
+                                    ? <ProgmanIcon8 size={24} />
+                                    : <User className="w-4 h-4 mr-2"/>
+                                }
                                 Account
+                            </TabsTrigger>
+                            <TabsTrigger value="appearance" className="justify-start data-[state=active]:bg-background data-[state=active]:shadow-sm">
+                                {theme === "win69"
+                                    ? <WindowsPaint3 size={24} />
+                                    : <Palette className="w-4 h-4 mr-2" />
+                                }
+                                Appearance
                             </TabsTrigger>
                             <TabsTrigger value="security"
                                          className="justify-start data-[state=active]:bg-background data-[state=active]:shadow-sm">
-                                <Shield className="w-4 h-4 mr-2"/>
+                                {theme === "win69"
+                                    ? <ProgmanIcon12 size={24} />
+                                    : <Shield className="w-4 h-4 mr-2"/>
+                                }
                                 Security
                             </TabsTrigger>
                         </TabsList>
@@ -66,6 +117,28 @@ export function SettingsDialog({open, onOpenChange}: SettingsDialogProps) {
                                         <Input id="display-name" defaultValue={auth.user?.username ?? ""} disabled/>
                                     </div>
                                     <Button>Save Account Changes</Button>
+                                </div>
+                            </TabsContent>
+
+                            <TabsContent value="appearance" className="m-0 outline-none space-y-6">
+                                <div className="space-y-4">
+                                    <h3 className="text-lg font-medium">Appearance</h3>
+                                    <div className="grid gap-2">
+                                        <Label htmlFor="theme-select">Theme</Label>
+                                        <Select
+                                            value={theme}
+                                            onValueChange={handleThemeChange}
+                                        >
+                                            <SelectTrigger id="theme-select" className="w-50">
+                                                <SelectValue placeholder="Select a theme" />
+                                            </SelectTrigger>
+                                            <SelectContent>
+                                                <SelectItem value="light">light</SelectItem>
+                                                <SelectItem value="dark">dark</SelectItem>
+                                                <SelectItem value="win69">win69</SelectItem>
+                                            </SelectContent>
+                                        </Select>
+                                    </div>
                                 </div>
                             </TabsContent>
 

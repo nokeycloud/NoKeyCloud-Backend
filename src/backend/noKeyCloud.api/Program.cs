@@ -1,5 +1,9 @@
+using Microsoft.AspNetCore.Antiforgery;
+using Microsoft.AspNetCore.Mvc;
 using noKeyCloud.api.CustomMiddleware;
+using noKeyCloud.api.Filters;
 using noKeyCloud.Application;
+using noKeyCloud.Application.Abstractions.Services;
 using noKeyCloud.Infrastructure;
 using Scalar.AspNetCore;
 
@@ -10,7 +14,7 @@ public class Program
     /// <summary>
     /// Main Program Entrypoint
     /// </summary>
-    public static void Main()
+    public static async Task Main()
     {
         DotNetEnv.Env.Load();
 
@@ -77,8 +81,6 @@ public class Program
             options.HttpsPort = 443;
         });
 
-        builder.Services.AddControllers();
-
         builder.Services.AddOpenApi();
 
         builder.Services.AddHttpContextAccessor();
@@ -97,6 +99,26 @@ public class Program
         {
             var dbContext = scope.ServiceProvider.GetRequiredService<DataContext>();
             dbContext.Database.EnsureCreated();
+            
+            var setupProvider = scope.ServiceProvider.GetRequiredService<IOpaqueServerSetupProvider>();
+            var publicKey = await setupProvider.GetServerPublicKeyAsync(CancellationToken.None);
+            
+            if (app.Environment.IsDevelopment())
+            {
+                var logger = scope.ServiceProvider.GetRequiredService<ILogger<Program>>();
+                logger.LogInformation("OPAQUE dev public key: {Key}", publicKey);
+            }
+
+            var exportPath = Environment.GetEnvironmentVariable("OPAQUE_PUBLIC_KEY_EXPORT_PATH");
+            if (!string.IsNullOrWhiteSpace(exportPath))
+            {
+                var dir = Path.GetDirectoryName(exportPath);
+                if (!string.IsNullOrEmpty(dir)) Directory.CreateDirectory(dir);
+                
+                var tmp = exportPath + ".tmp";
+                await File.WriteAllTextAsync(tmp, publicKey);
+                File.Move(tmp, exportPath, overwrite: true);
+            }
         }
 
         if (app.Environment.IsDevelopment())

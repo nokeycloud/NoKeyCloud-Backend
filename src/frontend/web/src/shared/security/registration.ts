@@ -1,4 +1,3 @@
-import { generateSrpVerifier } from "./srp-native";
 import {
     generateSalt,
     generateAesKey,
@@ -9,8 +8,6 @@ import {
 import {bytesToBase64} from "@/shared/lib";
 
 export interface RegistrationPayload {
-    srpSaltBase64: string;
-    srpVerifierBase64: string;
     keySaltBase64: string;
     encryptedMasterKeyBase64: string;
     recoveryEncryptedMasterKeyBase64: string;
@@ -18,8 +15,7 @@ export interface RegistrationPayload {
     rootFolderEncryptedKeyBase64: string;
 }
 
-export async function prepareRegistration(username: string, password: string): Promise<RegistrationPayload> {
-    const { saltBase64: srpSaltBase64, verifierBase64: srpVerifierBase64 } = await generateSrpVerifier(username, password);
+export async function prepareRegistration(password: string): Promise<RegistrationPayload> {
 
     const masterKey = await generateAesKey();
     const exportedMasterKey = await exportKey(masterKey);
@@ -40,8 +36,6 @@ export async function prepareRegistration(username: string, password: string): P
     const rootFolderEncryptedKey = await encryptBytes(masterKey, exportedRootKey);
 
     return {
-        srpSaltBase64,
-        srpVerifierBase64,
         keySaltBase64: bytesToBase64(keySalt),
         encryptedMasterKeyBase64: bytesToBase64(encryptedMasterKey),
         recoveryEncryptedMasterKeyBase64: bytesToBase64(recoveryEncryptedMasterKey),

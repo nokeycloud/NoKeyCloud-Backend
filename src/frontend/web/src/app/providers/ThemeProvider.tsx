@@ -1,6 +1,7 @@
 import { createContext, useContext, useEffect, useState } from "react"
+import {useAuth} from "@/entities/session";
 
-type Theme = "dark" | "light"
+type Theme = "dark" | "light" | "win69"
 
 type ThemeProviderProps = {
     children: React.ReactNode
@@ -30,9 +31,21 @@ export function ThemeProvider({
         () => (localStorage.getItem(storageKey) as Theme) || defaultTheme
     )
 
+    const auth = useAuth();
+
+    useEffect(() => {
+        if (auth.status === "authenticated" && auth.user?.theme) {
+            setTheme(auth.user.theme as Theme);
+            localStorage.setItem(storageKey, auth.user.theme);
+        } else if (auth.status === "guest") {
+            setTheme(defaultTheme);
+            localStorage.setItem(storageKey, defaultTheme);
+        }
+    }, [auth.status, auth.user?.theme, defaultTheme, storageKey]);
+
     useEffect(() => {
         const root = window.document.documentElement
-        root.classList.remove("light", "dark")
+        root.classList.remove("light", "dark", "win69")
         root.classList.add(theme)
     }, [theme])
 

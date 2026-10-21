@@ -1,8 +1,5 @@
 ﻿namespace noKeyCloud.Contracts.Authenticate;
 
-public record LoginVerifyResponse
-(
-    byte[] M2,
+public record LoginVerifyResponse (
     byte[] EncryptedMasterKey,
-    byte[] KeySalt
-);
+    byte[] KeySalt);

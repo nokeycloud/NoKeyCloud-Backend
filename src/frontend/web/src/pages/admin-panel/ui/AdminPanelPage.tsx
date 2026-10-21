@@ -4,10 +4,13 @@ import {useAuth} from "@/entities/session";
 import {Tabs, TabsContent, TabsList, TabsTrigger} from "@/shared/ui/tabs.tsx";
 import {Link} from "lucide-react";
 import {RegisterInviteManagementPanel} from "@/features/register-invite-management";
+import {Windows95Hticons6} from "react-old-icons";
+import { useTheme } from "@/app/providers/ThemeProvider";
 
 export function AdminPanelPage() {
     const navigate = useNavigate();
     const auth = useAuth();
+    const { theme } =useTheme();
 
     useEffect(() => {
         document.title = "Admin - noKeyCloud";
@@ -30,7 +33,10 @@ export function AdminPanelPage() {
                     className="flex flex-col w-48 h-full items-stretch justify-start gap-2 p-3 rounded-none">
                     <TabsTrigger value="register-invites"
                                  className="justify-start data-[state=active]:bg-background data-[state=active]:shadow-sm">
-                        <Link className="w-4 h-4 mr-2"/>
+                        {theme === "win69"
+                            ? <Windows95Hticons6 size={24} />
+                            : <Link className="w-4 h-4 mr-2"/>
+                        }
                         Register Invites
                     </TabsTrigger>
                 </TabsList>

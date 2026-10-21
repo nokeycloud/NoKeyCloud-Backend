@@ -1,1 +1,2 @@
 export {cn, formatBytes, bytesToBase64, base64ToBytes} from "./utils";
+export {evaluatePasswordStrength, isPasswordAcceptable, type PasswordStrengthResult, type PasswordScore} from "./password-strength";
