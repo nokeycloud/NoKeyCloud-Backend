@@ -91,18 +91,30 @@ public class FileRepository : IFileRepository
         return fileContent;
     }
 
-    public async Task<bool> DeleteFile(Guid userId, Guid fileId, CancellationToken cancellationToken)
+    public async Task<bool> DeleteFiles(Guid userId, List<Guid> fileIds, CancellationToken cancellationToken)
     {
-        var file = await GetFileById(userId, fileId, cancellationToken);
-        System.IO.File.Delete(file.Item1.StoragePath);
-        if (System.IO.File.Exists(file.Item1.StoragePath))
-        {
-            throw new Exception("Couldn't delete the file content.");
-        }
-        var result = _context.Files.Remove(file.Item1);
-        var affectedRows = await _context.SaveChangesAsync(cancellationToken);
-        return affectedRows > 0;
+        var files = await _context.Files
+            .Where(f => fileIds.Contains(f.Id) && f.UserId == userId)
+            .ToListAsync(cancellationToken);
 
+        if (files.Count != fileIds.Count)
+        {
+            return false;
+        }
+
+        await using var transaction = await _context.Database.BeginTransactionAsync(cancellationToken);
+
+        _context.Files.RemoveRange(files);
+        await transaction.CommitAsync(cancellationToken);
+        await _context.SaveChangesAsync(cancellationToken);
+        
+
+        foreach (var file in files)
+        {
+            System.IO.File.Delete(Path.Combine(_baseStoragePath, $"{file.Id}{FileExtension}"));
+        }
+
+        return true;
     }
 
 

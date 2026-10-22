@@ -10,17 +10,22 @@ using System.Text;
 
 namespace noKeyCloud.Application.Features.Files.DeleteFile;
 
-public class DeleteFileCommandHandler(IFileService fileService) : IRequestHandler<DeleteFileCommand, Result<DeleteFileResponse>>
+public class DeleteFileCommandHandler(IFileRepository fileRepository) : IRequestHandler<DeleteFileCommand, Result<DeleteFileResponse>>
 {
     public async Task<Result<DeleteFileResponse>> Handle(DeleteFileCommand command, CancellationToken cancellationToken)
     {
-        var result = await fileService.DeleteFile(command, cancellationToken);
-        var response = new DeleteFileResponse
+        var fileIds = command.FileListIds.Distinct().ToList();
+        if (fileIds.Count == 0)
         {
-            Success = result
-        };
-        return Result<DeleteFileResponse>.Success(response);
-        
+            return Result<DeleteFileResponse>.Success(new DeleteFileResponse { Success = true });
+        }
+
+        var deleted = await fileRepository.DeleteFiles(command.UserId, fileIds, cancellationToken);
+        if (!deleted)
+        {
+            return Result<DeleteFileResponse>.Failure("Couldn't delete the files. Make sure they exist and belong to you.");
+        }
+
+        return Result<DeleteFileResponse>.Success(new DeleteFileResponse { Success = true });
     }
 }
-

@@ -44,8 +44,6 @@ public static class DependencyInjection
 
         services.AddScoped<IJwtService, JwtService>();
 
-        services.AddScoped<IFileService, FileService>();
-
         services.AddScoped<IFileRepository, FileRepository>();
 
         services.AddScoped<IRegisterInviteRepository, RegisterInviteRepository>();

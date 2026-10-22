@@ -10,5 +10,5 @@ public interface IFileRepository
 
     Task<byte[]> DownloadFile(File file, CancellationToken cancellationToken);
 
-    Task<bool> DeleteFile (Guid UserId, Guid FileId, CancellationToken cancellationToken);
+    Task<bool> DeleteFiles(Guid userId, List<Guid> fileIds, CancellationToken cancellationToken);
 }
