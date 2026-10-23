@@ -1,6 +1,8 @@
-﻿using Moq;
+﻿using Microsoft.Extensions.Options;
+using Moq;
 using noKeyCloud.Application.Abstractions.Repositories;
 using noKeyCloud.Application.Abstractions.Services;
+using noKeyCloud.Application.Configuration;
 using noKeyCloud.Application.Features.Users.LoginVerify;
 using noKeyCloud.Domain.Entities;
 
@@ -21,6 +23,13 @@ public class LoginVerifyTests
     private readonly Mock<IUserRepository> _userRepositoryMock;
     private readonly Mock<IOpaqueAuthService> _opaqueAuthServiceMock;
     private readonly LoginVerifyCommandHandler _handler;
+    
+    private static readonly JwtOptions TestJwtOptions = new()
+    {
+        SecretKey = "unused-in-tests",
+        AccessTokenLifetimeMinutes = 15,
+        RefreshTokenLifetimeHours = 24
+    };
 
     public LoginVerifyTests()
     {
@@ -37,7 +46,8 @@ public class LoginVerifyTests
             _refreshTokenProviderMock.Object,
             _folderRepositoryMock.Object,
             _userRepositoryMock.Object,
-            _opaqueAuthServiceMock.Object);
+            _opaqueAuthServiceMock.Object,
+            Options.Create(TestJwtOptions));
     }
 
     private static User CreateFakeUser(Guid id, bool isAdmin = false) =>
@@ -360,6 +370,41 @@ public class LoginVerifyTests
 
         _folderRepositoryMock.Verify(
             f => f.GetUserHomeFolder(userId, It.IsAny<CancellationToken>()),
+            Times.Once);
+    }
+    
+    [Fact]
+    public async Task Handle_WhenRefreshTokenLifetimeHoursIsConfigured_ShouldUseConfiguredValue()
+    {
+        var sessionId = Guid.NewGuid();
+        var userId = Guid.NewGuid();
+        SetupHappyPath(sessionId, userId);
+
+        const int configuredHours = 6;
+        var handler = new LoginVerifyCommandHandler(
+            _jwtServiceMock.Object,
+            _sessionStoreMock.Object,
+            _refreshTokenProviderMock.Object,
+            _folderRepositoryMock.Object,
+            _userRepositoryMock.Object,
+            _opaqueAuthServiceMock.Object,
+            Options.Create(new JwtOptions
+            {
+                SecretKey = "unused-in-tests",
+                AccessTokenLifetimeMinutes = 15,
+                RefreshTokenLifetimeHours = configuredHours
+            }));
+
+        await handler.Handle(
+            new LoginVerifyCommand(sessionId.ToString(), FinishLoginRequest),
+            CancellationToken.None);
+
+        _refreshTokenProviderMock.Verify(
+            r => r.StoreRefreshTokenAsync(
+                userId,
+                RefreshToken,
+                TimeSpan.FromHours(configuredHours),
+                It.IsAny<CancellationToken>()),
             Times.Once);
     }
 }

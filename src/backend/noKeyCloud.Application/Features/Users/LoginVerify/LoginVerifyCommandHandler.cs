@@ -1,6 +1,8 @@
 using MediatR;
+using Microsoft.Extensions.Options;
 using noKeyCloud.Application.Abstractions.Repositories;
 using noKeyCloud.Application.Abstractions.Services;
+using noKeyCloud.Application.Configuration;
 using noKeyCloud.Contracts.Authenticate;
 using noKeyCloud.Contracts.Common;
 
@@ -12,9 +14,11 @@ namespace noKeyCloud.Application.Features.Users.LoginVerify;
         IRefreshTokenProvider refreshTokenProvider,
         IFolderRepository folderRepository,
         IUserRepository userRepository,
-        IOpaqueAuthService opaqueAuthService)
+        IOpaqueAuthService opaqueAuthService,
+        IOptions<JwtOptions> jwtOptions)
         : IRequestHandler<LoginVerifyCommand, Result<LoginVerifyResult>>
     {
+        private readonly JwtOptions _options = jwtOptions.Value;
 
     public async Task<Result<LoginVerifyResult>> Handle(LoginVerifyCommand request, CancellationToken cancellationToken)
     {
@@ -40,7 +44,7 @@ namespace noKeyCloud.Application.Features.Users.LoginVerify;
             var token = await jwtService.JwtTokenService(userId, user!.IsAdmin);
 
             var refreshToken = refreshTokenProvider.GenerateRefreshToken();
-            await refreshTokenProvider.StoreRefreshTokenAsync(userId, refreshToken, TimeSpan.FromHours(24), cancellationToken);
+            await refreshTokenProvider.StoreRefreshTokenAsync(userId, refreshToken, TimeSpan.FromHours(_options.RefreshTokenLifetimeHours), cancellationToken);
             var rootFolder = await folderRepository.GetUserHomeFolder(userId, cancellationToken);
 
             var deleteSession = await sessionStore.DeleteSessionAsync(sessionIdGuid);

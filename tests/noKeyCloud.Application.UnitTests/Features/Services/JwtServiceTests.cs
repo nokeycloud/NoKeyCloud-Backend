@@ -1,73 +1,88 @@
-﻿using System;
-using System.Collections.Generic;
-using System.IdentityModel.Tokens.Jwt;
+﻿using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
-using System.Text;
-using System.Threading.Tasks;
-using Microsoft.Extensions.Configuration;
-using Moq;
+using Microsoft.Extensions.Options;
+using noKeyCloud.Application.Configuration;
 using noKeyCloud.Infrastructure.Services;
-using Xunit;
 
-namespace noKeyCloud.Application.UnitTests.Features.Services
+namespace noKeyCloud.Application.UnitTests.Features.Services;
+
+public class JwtServiceTests
 {
-    public class JwtServiceTests
+    private static JwtOptions CreateJwtOptions(
+        string? secretKey = null,
+        int accessTokenLifetimeMinutes = 15)
     {
-        private readonly Mock<IConfigurationSection> _jwtSettingsSectionMock;
-
-        public JwtServiceTests()
+        return new JwtOptions
         {
-            _jwtSettingsSectionMock = new Mock<IConfigurationSection>();
-        }
+            SecretKey = secretKey ?? "A_VERY_SECRET_KEY_THAT_IS_LONG_ENOUGH_FOR_HMACSHA256",
+            ValidIssuer = ["noKeyCloud.api"],
+            ValidAudience = ["noKeyCloud.api"],
+            AccessTokenLifetimeMinutes = accessTokenLifetimeMinutes,
+            RefreshTokenLifetimeHours = 24
+        };
+    }
 
-        [Fact]
-        public async Task JwtTokenService_ThrowsException_WhenSecretKeyMissing()
-        {
+    [Fact]
+    public async Task JwtTokenService_ThrowsException_WhenSecretKeyMissing()
+    {
+        var options = Options.Create(CreateJwtOptions(secretKey: string.Empty));
+        var jwtService = new JwtService(options);
+        var id = Guid.NewGuid();
 
-            Environment.SetEnvironmentVariable("JwtSettings__SecretKey", null);
-            
-            IConfiguration configuration = new ConfigurationBuilder().AddEnvironmentVariables().Build();
+        var exception = await Assert.ThrowsAsync<InvalidOperationException>(
+            () => jwtService.JwtTokenService(id, false));
 
-            var jwtService = new JwtService(configuration);
-            var id = Guid.NewGuid();
+        Assert.Equal("Missing JWT SecretKey environment variable", exception.Message);
+    }
 
-            var exception = await Assert.ThrowsAsync<InvalidOperationException>(() => jwtService.JwtTokenService(id, false));
+    [Fact]
+    public async Task JwtTokenService_ReturnsValidToken_WhenConfiguredCorrectly()
+    {
+        var options = Options.Create(CreateJwtOptions(accessTokenLifetimeMinutes: 60));
+        var jwtService = new JwtService(options);
+        var id = Guid.NewGuid();
 
-            Assert.Equal("Missing JWT SecretKey environment variable", exception.Message);
-        }
+        var tokenString = await jwtService.JwtTokenService(id, true);
 
-        [Fact]
-        public async Task JwtTokenService_ReturnsValidToken_WhenConfiguredCorrectly()
-        {
-            var secretKey = "A_VERY_SECRET_KEY_THAT_IS_LONG_ENOUGH_FOR_HMACSHA256";
-            Environment.SetEnvironmentVariable("JwtSettings__SecretKey", secretKey);
+        Assert.False(string.IsNullOrEmpty(tokenString));
 
-            IConfiguration configuration = new ConfigurationBuilder().AddEnvironmentVariables().Build();
+        var token = new JwtSecurityTokenHandler().ReadJwtToken(tokenString);
 
-            _jwtSettingsSectionMock.Setup(s => s["Lifetime"]).Returns("60");
+        Assert.Equal(id.ToString(), token.Subject);
+        Assert.Contains(token.Claims, c => c.Type == JwtRegisteredClaimNames.Jti);
+        Assert.Contains(token.Claims, c => c.Type == ClaimTypes.Role && c.Value == "admin");
+    }
 
-            var validIssuerSectionMock = new Mock<IConfigurationSection>();
-            validIssuerSectionMock.Setup(s => s.Value).Returns("");
-            _jwtSettingsSectionMock.Setup(s => s.GetSection("ValidIssuer")).Returns(validIssuerSectionMock.Object);
+    [Fact]
+    public async Task JwtTokenService_WhenAccessTokenLifetimeMinutesIsSet_ExpClaimReflectsIt()
+    {
+        const int lifetimeMinutes = 42;
+        var options = Options.Create(CreateJwtOptions(accessTokenLifetimeMinutes: lifetimeMinutes));
+        var jwtService = new JwtService(options);
+        var before = DateTime.UtcNow;
 
-            var validAudienceSectionMock = new Mock<IConfigurationSection>();
-            validAudienceSectionMock.Setup(s => s.Value).Returns("");
-            _jwtSettingsSectionMock.Setup(s => s.GetSection("ValidAudience")).Returns(validAudienceSectionMock.Object);
+        var tokenString = await jwtService.JwtTokenService(Guid.NewGuid(), false);
 
-            var jwtService = new JwtService(configuration);
-            var id = Guid.NewGuid();
+        var token = new JwtSecurityTokenHandler().ReadJwtToken(tokenString);
+        var expectedExpiry = before.AddMinutes(lifetimeMinutes);
+        
+        var diff = (token.ValidTo - expectedExpiry).Duration();
+        Assert.True(diff < TimeSpan.FromSeconds(30),
+            $"Expected exp ~{expectedExpiry:O} but got {token.ValidTo:O} (diff {diff.TotalSeconds:F1}s)");
+    }
 
+    [Fact]
+    public async Task JwtTokenService_WhenAccessTokenLifetimeMinutesDiffers_ExpClaimDiffers()
+    {
+        var options15 = Options.Create(CreateJwtOptions(accessTokenLifetimeMinutes: 15));
+        var options42 = Options.Create(CreateJwtOptions(accessTokenLifetimeMinutes: 42));
 
-            var tokenString = await jwtService.JwtTokenService(id, true);
+        var token15 = new JwtSecurityTokenHandler().ReadJwtToken(
+            await new JwtService(options15).JwtTokenService(Guid.NewGuid(), false));
+        var token42 = new JwtSecurityTokenHandler().ReadJwtToken(
+            await new JwtService(options42).JwtTokenService(Guid.NewGuid(), false));
 
-            Assert.False(string.IsNullOrEmpty(tokenString));
-
-            var tokenHandler = new JwtSecurityTokenHandler();
-            var token = tokenHandler.ReadJwtToken(tokenString);
-
-            Assert.Equal(id.ToString(), token.Subject);
-            Assert.Contains(token.Claims, c => c.Type == JwtRegisteredClaimNames.Jti);
-            Assert.Contains(token.Claims, c => c.Type == ClaimTypes.Role && c.Value == "admin");
-        }
+        var delta = (token42.ValidTo - token15.ValidTo).TotalMinutes;
+        Assert.InRange(delta, 26.0, 28.0);
     }
 }

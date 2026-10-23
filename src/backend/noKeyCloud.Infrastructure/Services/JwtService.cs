@@ -1,59 +1,49 @@
-﻿using Microsoft.Extensions.Configuration;
-using Microsoft.IdentityModel.Tokens;
+﻿using Microsoft.IdentityModel.Tokens;
 using noKeyCloud.Application.Abstractions.Services;
-using System;
-using System.Collections.Generic;
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using System.Text;
+using Microsoft.Extensions.Options;
+using noKeyCloud.Application.Configuration;
 
-namespace noKeyCloud.Infrastructure.Services
+namespace noKeyCloud.Infrastructure.Services;
+
+public class JwtService(IOptions<JwtOptions> jwtOptions) : IJwtService
+
 {
-    public class JwtService : IJwtService
+    private readonly JwtOptions _options = jwtOptions.Value;
+    public Task<string> JwtTokenService(Guid? id, bool isAdmin)
     {
-        private readonly IConfiguration _configuration;
-        public JwtService(IConfiguration configuration)
+        var secretKeyString = _options.SecretKey;
+
+        if (string.IsNullOrEmpty(secretKeyString))
         {
-            _configuration = configuration;
+            throw new InvalidOperationException("Missing JWT SecretKey environment variable");
         }
 
-        public async Task<string> JwtTokenService(Guid? Id, bool isAdmin)
+        var secretKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(secretKeyString));
+
+        var claims = new[]
         {
-            var JwtSettings = _configuration.GetSection("JwtSettings");
-            var secretKeyString = JwtSettings["SecretKey"];
+            new Claim(JwtRegisteredClaimNames.Sub, id.ToString()!),
+            new Claim(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString())
+        };
 
-            if (string.IsNullOrEmpty(secretKeyString))
-            {
-                throw new InvalidOperationException("Missing JWT SecretKey environment variable");
-            }
-
-            var secretKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(secretKeyString));
-
-            var claims = new[]
-            {
-                new Claim(JwtRegisteredClaimNames.Sub, Id.ToString()!),
-                new Claim(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString())
-            };
-
-            if (isAdmin)
-            {
-                claims = claims.Append(new Claim(ClaimTypes.Role, "admin")).ToArray();
-            }
-
-            var validIssuers = JwtSettings.GetSection("ValidIssuer").Get<string[]>() ?? Array.Empty<string>();
-            var validAudiences = JwtSettings.GetSection("ValidAudience").Get<string[]>() ?? Array.Empty<string>();
-
-            var credentials = new SigningCredentials(secretKey, SecurityAlgorithms.HmacSha256);
-
-            var token = new JwtSecurityToken(
-                issuer: validIssuers.FirstOrDefault(),
-                audience: validAudiences.FirstOrDefault(),
-                claims: claims,
-                expires: DateTime.UtcNow.AddMinutes(double.Parse(JwtSettings["Lifetime"] ?? "15")),
-                signingCredentials: credentials
-            );
-            return new JwtSecurityTokenHandler().WriteToken(token);
+        if (isAdmin)
+        {
+            claims = [.. claims, new Claim(ClaimTypes.Role, "admin")];
         }
 
+        var credentials = new SigningCredentials(secretKey, SecurityAlgorithms.HmacSha256);
+
+        var token = new JwtSecurityToken(
+            issuer: _options.ValidIssuer.FirstOrDefault(),
+            audience: _options.ValidAudience.FirstOrDefault(),
+            claims: claims,
+            expires: DateTime.UtcNow.AddMinutes(_options.AccessTokenLifetimeMinutes),
+            signingCredentials: credentials
+        );
+
+        return Task.FromResult(new JwtSecurityTokenHandler().WriteToken(token));
     }
 }
