@@ -101,6 +101,10 @@ public class FileRepository : IFileRepository
         {
             return false;
         }
+        if (files.Any(f => f.IsInTrash))
+        {
+            return false;
+        }
 
         await using var transaction = await _context.Database.BeginTransactionAsync(cancellationToken);
 

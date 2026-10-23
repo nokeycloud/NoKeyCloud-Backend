@@ -36,7 +36,7 @@ public class UploadFileHandler(IFileRepository fileRepository, IUserRepository u
         try
         {
             var file = new File(fileId, request.FileName, request.MimeType, request.SizeBytes, "/", request.EncryptedKey, request.Checksum,
-                folderId, userId);
+                folderId, userId, false);
 
             file.InitAdditionalData(folder, user);
 

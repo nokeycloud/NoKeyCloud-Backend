@@ -25,10 +25,12 @@ public class File
     public Guid ParentFolderId { get; private set; }
     
     public Guid UserId { get; private set; }
-    
-    
+
+    public Boolean IsInTrash { get; private set; }
+
+
     //Navigation
-    
+
     public Folder ParentFolder { get; private set; }
     
     public User OwnerUser { get; private set; }
@@ -36,7 +38,7 @@ public class File
     //Validation
     
     public File(Guid id, byte[] encryptedName, string mimeType, long sizeBytes, string storagePath, byte[] encryptedKey, byte[] checksum,
-        Guid parentFolderId, Guid userId)
+        Guid parentFolderId, Guid userId, Boolean isInTrash)
     {
         Id = id;
         EncryptedName = encryptedName;
@@ -49,7 +51,8 @@ public class File
         UpdatedAt = CreatedAt;
         ParentFolderId = parentFolderId;
         UserId = userId;
-        
+        IsInTrash = isInTrash;
+
     }
 
     public void InitAdditionalData(Folder parentFolder, User user)
