@@ -1,11 +1,11 @@
-using Microsoft.AspNetCore.Antiforgery;
-using Microsoft.AspNetCore.Mvc;
 using noKeyCloud.api.CustomMiddleware;
 using noKeyCloud.api.Filters;
 using noKeyCloud.Application;
 using noKeyCloud.Application.Abstractions.Services;
 using noKeyCloud.Infrastructure;
 using Scalar.AspNetCore;
+using Microsoft.AspNetCore.HttpOverrides;
+using Microsoft.AspNetCore.DataProtection;
 
 namespace noKeyCloud.api;
 
@@ -38,6 +38,32 @@ public class Program
         }
 
         var builder = WebApplication.CreateBuilder();
+        
+        builder.Services.Configure<ForwardedHeadersOptions>(options =>
+        {
+            options.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto;
+            options.KnownIPNetworks.Clear();
+            options.KnownProxies.Clear();
+        });
+        
+        const string dpKeysPathVarName = "DP_KEYS_PATH";
+        const string defaultDpKeysDirName = "DataProtection-Keys";
+
+        var dpKeysPath = Environment.GetEnvironmentVariable(dpKeysPathVarName);
+        if (string.IsNullOrWhiteSpace(dpKeysPath))
+        {
+            dpKeysPath = Path.Combine(AppContext.BaseDirectory, defaultDpKeysDirName);
+        }
+
+        var dpKeysDir = new DirectoryInfo(dpKeysPath);
+        if (!dpKeysDir.Exists)
+        {
+            dpKeysDir.Create();
+        }
+
+        builder.Services.AddDataProtection()
+            .PersistKeysToFileSystem(dpKeysDir)
+            .SetApplicationName("noKeyCloud");
 
         builder.Services.AddCors(options =>
         {
@@ -94,6 +120,8 @@ public class Program
 
 
         var app = builder.Build();
+        
+        app.UseForwardedHeaders();
 
         using (var scope = app.Services.CreateScope())
         {
