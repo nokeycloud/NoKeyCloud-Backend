@@ -26,6 +26,10 @@ public class File
     
     public Guid UserId { get; private set; }
     
+    public bool IsDeleted { get; private set; } =  false;
+
+    public DateTime? DeletedAt { get; private set; } = null;
+    
     
     //Navigation
     
@@ -56,6 +60,12 @@ public class File
     {
         ParentFolder = parentFolder;
         OwnerUser = user;
+    }
+
+    public void SoftDelete()
+    {
+        IsDeleted = true;
+        DeletedAt = DateTime.UtcNow;
     }
     
     //EF
