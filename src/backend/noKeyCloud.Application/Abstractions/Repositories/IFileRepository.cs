@@ -9,4 +9,6 @@ public interface IFileRepository
     Task<(File file, byte[] content)> GetFileById(Guid fileId, Guid userId, CancellationToken cancellationToken);
 
     Task<byte[]> DownloadFile(File file, CancellationToken cancellationToken);
+    
+    Task<bool> SoftDeleteFileById(Guid fileId, Guid userId, CancellationToken cancellationToken);
 }

@@ -91,5 +91,17 @@ public class FileRepository : IFileRepository
         return fileContent;
     }
 
+    public async Task<bool> SoftDeleteFileById(Guid fileId, Guid userId, CancellationToken cancellationToken)
+    {
+        var file = await _context.Files.FirstOrDefaultAsync(f => f.Id == fileId && f.UserId == userId, cancellationToken);
+        
+        if(file == null) return  false;
+        
+        file.SoftDelete();
+        
+        await _context.SaveChangesAsync(cancellationToken);
+        
+        return true;
+    }
 
 }
