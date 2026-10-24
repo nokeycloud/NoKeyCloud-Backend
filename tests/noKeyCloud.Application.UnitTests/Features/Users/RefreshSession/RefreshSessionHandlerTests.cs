@@ -1,6 +1,8 @@
-﻿using Moq;
+﻿using Microsoft.Extensions.Options;
+using Moq;
 using noKeyCloud.Application.Abstractions.Repositories;
 using noKeyCloud.Application.Abstractions.Services;
+using noKeyCloud.Application.Configuration;
 using noKeyCloud.Application.Features.Users.RefreshSession;
 using noKeyCloud.Domain.Entities;
 
@@ -16,6 +18,13 @@ public class RefreshSessionHandlerTests
     private readonly Mock<IRefreshTokenProvider> _refreshTokenProviderMock;
     private readonly Mock<IUserRepository> _userRepositoryMock;
     private readonly RefreshSessionHandler _handler;
+    
+    private static readonly JwtOptions DefaultJwtOptions = new()
+    {
+        SecretKey = "unused-in-tests",
+        AccessTokenLifetimeMinutes = 15,
+        RefreshTokenLifetimeHours = 24
+    };
 
     public RefreshSessionHandlerTests()
     {
@@ -26,7 +35,8 @@ public class RefreshSessionHandlerTests
         _handler = new RefreshSessionHandler(
             _jwtServiceMock.Object,
             _refreshTokenProviderMock.Object,
-            _userRepositoryMock.Object);
+            _userRepositoryMock.Object,
+            Options.Create(DefaultJwtOptions));
     }
 
     private static User CreateFakeUser(Guid id, bool isAdmin = false) =>
@@ -298,5 +308,66 @@ public class RefreshSessionHandlerTests
         await _handler.Handle(command, CancellationToken.None);
 
         Assert.Equal(new[] { "revoke", "store" }, callOrder);
+    }
+    
+    [Fact]
+    public async Task Handle_WhenAccessTokenLifetimeMinutesIsConfigured_ResponseExpiryReflectsIt()
+    {
+        var userId = Guid.NewGuid();
+        SetupHappyPath(userId);
+
+        const int configuredMinutes = 30;
+        var handler = new RefreshSessionHandler(
+            _jwtServiceMock.Object,
+            _refreshTokenProviderMock.Object,
+            _userRepositoryMock.Object,
+            Options.Create(new JwtOptions
+            {
+                SecretKey = "unused-in-tests",
+                AccessTokenLifetimeMinutes = configuredMinutes,
+                RefreshTokenLifetimeHours = 24
+            }));
+
+        var before = DateTime.UtcNow;
+
+        var result = await handler.Handle(
+            new RefreshSessionCommand(OldToken), CancellationToken.None);
+
+        var expected = before.AddMinutes(configuredMinutes);
+        var actual = result.Value!.ResponsePayload.AccessTokenExpiresAt;
+
+        var diff = (actual - expected).Duration();
+        Assert.True(diff < TimeSpan.FromSeconds(5),
+            $"Expected ~{expected:O} but got {actual:O}");
+    }
+
+    [Fact]
+    public async Task Handle_WhenRefreshTokenLifetimeHoursIsConfigured_ShouldUseConfiguredValue()
+    {
+        var userId = Guid.NewGuid();
+        SetupHappyPath(userId);
+
+        const int configuredHours = 6;
+        var handler = new RefreshSessionHandler(
+            _jwtServiceMock.Object,
+            _refreshTokenProviderMock.Object,
+            _userRepositoryMock.Object,
+            Options.Create(new JwtOptions
+            {
+                SecretKey = "unused-in-tests",
+                AccessTokenLifetimeMinutes = 15,
+                RefreshTokenLifetimeHours = configuredHours
+            }));
+
+        await handler.Handle(
+            new RefreshSessionCommand(OldToken), CancellationToken.None);
+
+        _refreshTokenProviderMock.Verify(
+            p => p.StoreRefreshTokenAsync(
+                userId,
+                NewToken,
+                TimeSpan.FromHours(configuredHours),
+                It.IsAny<CancellationToken>()),
+            Times.Once);
     }
 }

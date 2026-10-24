@@ -3,6 +3,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using noKeyCloud.Application.Abstractions.Repositories;
 using noKeyCloud.Application.Abstractions.Services;
+using noKeyCloud.Application.Configuration;
 using noKeyCloud.Infrastructure.Repositories;
 using noKeyCloud.Infrastructure.Security.Opaque;
 using noKeyCloud.Infrastructure.Services;
@@ -55,6 +56,8 @@ public static class DependencyInjection
         services.AddSingleton<IOpaqueServerSetupProvider, OpaqueServerSetupProvider>();
 
         services.AddSingleton<IOpaqueSessionStore, OpaqueSessionStoreProvider>();
+        
+        services.Configure<JwtOptions>(config.GetSection(JwtOptions.SectionName));
 
 
         var postgreUrl = Environment.GetEnvironmentVariable("DB_HOST");

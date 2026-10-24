@@ -10,6 +10,8 @@ using noKeyCloud.Application.Features.Users.RemoveUser;
 using noKeyCloud.Contracts.Authenticate;
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
+using Microsoft.Extensions.Options;
+using noKeyCloud.Application.Configuration;
 using noKeyCloud.Application.Features.Users.RegisterInit;
 
 namespace noKeyCloud.api.Controllers;
@@ -20,9 +22,12 @@ namespace noKeyCloud.api.Controllers;
 public class AuthenticateController : ControllerBase
 {
     private readonly IMediator _mediator;
-    public AuthenticateController(IMediator mediator)
+    private readonly JwtOptions _jwtOptions;
+    
+    public AuthenticateController(IMediator mediator, IOptions<JwtOptions> jwtOptions)
     {
         _mediator = mediator;
+        _jwtOptions = jwtOptions.Value;
     }
 
     [HttpPost("register")]
@@ -82,7 +87,7 @@ public class AuthenticateController : ControllerBase
                 Secure = true,
                 SameSite = SameSiteMode.Strict,
                 Path = "/",
-                Expires = DateTime.UtcNow.AddMinutes(15)
+                Expires = DateTime.UtcNow.AddMinutes(_jwtOptions.AccessTokenLifetimeMinutes)
             });
 
             Response.Cookies.Append("refresh_token", result.Value!.RefreshToken, new CookieOptions
@@ -91,7 +96,7 @@ public class AuthenticateController : ControllerBase
                 Secure = true,
                 SameSite = SameSiteMode.Strict,
                 Path = "/",
-                Expires = DateTime.UtcNow.AddHours(24)
+                Expires = DateTime.UtcNow.AddHours(_jwtOptions.RefreshTokenLifetimeHours)
             });
 
             return Ok(result.Value!.ResponsePayload);
@@ -126,7 +131,7 @@ public class AuthenticateController : ControllerBase
             Secure = true,
             SameSite = SameSiteMode.Strict,
             Path = "/",
-            Expires = DateTime.UtcNow.AddMinutes(15)
+            Expires = DateTime.UtcNow.AddMinutes(_jwtOptions.AccessTokenLifetimeMinutes)
         });
 
         Response.Cookies.Append("refresh_token", result.Value!.RefreshToken, new CookieOptions
@@ -135,7 +140,7 @@ public class AuthenticateController : ControllerBase
             Secure = true,
             SameSite = SameSiteMode.Strict,
             Path = "/",
-            Expires = DateTime.UtcNow.AddHours(24)
+            Expires = DateTime.UtcNow.AddHours(_jwtOptions.RefreshTokenLifetimeHours)
         });
 
         return Ok(result.Value!.ResponsePayload);
@@ -177,15 +182,23 @@ public class AuthenticateController : ControllerBase
 
         var result = await _mediator.Send(command);
 
-        Response.Cookies.Delete("access_token", new CookieOptions { Path = "/" });
-        Response.Cookies.Delete("refresh_token", new CookieOptions { Path = "/api/Authenticate/refresh" });
+        var cookieDeletionOptions = new CookieOptions
+        {
+            Path = "/",
+            Secure = true,
+            HttpOnly = true,
+            SameSite = SameSiteMode.Strict
+        };
+
+        Response.Cookies.Delete("access_token", cookieDeletionOptions);
+        Response.Cookies.Delete("refresh_token", cookieDeletionOptions);
 
         if (result.IsSuccess)
         {
             return Ok();
         }
 
-        if (result.Error != null && result.Error.Contains("Token.NotFound"))
+        if (result.Error.Contains("Token.NotFound"))
         {
             return Ok();
         }

@@ -1,14 +1,17 @@
 ﻿using MediatR;
+using Microsoft.Extensions.Options;
 using noKeyCloud.Application.Abstractions.Repositories;
 using noKeyCloud.Application.Abstractions.Services;
+using noKeyCloud.Application.Configuration;
 using noKeyCloud.Contracts.Authenticate;
 using noKeyCloud.Contracts.Common;
 
 namespace noKeyCloud.Application.Features.Users.RefreshSession;
 
-public class RefreshSessionHandler(IJwtService jwtService, IRefreshTokenProvider refreshTokenProvider, IUserRepository userRepository)
+public class RefreshSessionHandler(IJwtService jwtService, IRefreshTokenProvider refreshTokenProvider, IUserRepository userRepository, IOptions<JwtOptions> jwtOptions)
     : IRequestHandler<RefreshSessionCommand, Result<RefreshSessionResult>>
 {
+    private readonly JwtOptions _options = jwtOptions.Value;
     public async Task<Result<RefreshSessionResult>> Handle(RefreshSessionCommand request, CancellationToken cancellationToken)
     {
         var userId = await refreshTokenProvider.GetUserIdByRefreshTokenAsync(request.RefreshToken, cancellationToken);
@@ -33,7 +36,7 @@ public class RefreshSessionHandler(IJwtService jwtService, IRefreshTokenProvider
         }
         await refreshTokenProvider.RevokeRefreshTokenAsync(request.RefreshToken, cancellationToken);
 
-        await refreshTokenProvider.StoreRefreshTokenAsync(userId.Value, newRefreshToken, TimeSpan.FromHours(24), cancellationToken);
+        await refreshTokenProvider.StoreRefreshTokenAsync(userId.Value, newRefreshToken, TimeSpan.FromHours(_options.RefreshTokenLifetimeHours), cancellationToken);
 
         var user = await userRepository.GetUserByUserId(userId.Value, cancellationToken);
         var newJwt = await jwtService.JwtTokenService(userId.Value, user!.IsAdmin);
@@ -43,7 +46,7 @@ public class RefreshSessionHandler(IJwtService jwtService, IRefreshTokenProvider
             return Result<RefreshSessionResult>.Failure("Failed to generate a new JWT token.");
         }
 
-        var responsePayload = new RefreshSessionResponse(DateTime.UtcNow.AddMinutes(15));
+        var responsePayload = new RefreshSessionResponse(DateTime.UtcNow.AddMinutes(_options.AccessTokenLifetimeMinutes));
 
         var applicationResult = new RefreshSessionResult(responsePayload, newJwt, newRefreshToken);
 
