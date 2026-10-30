@@ -58,6 +58,8 @@ public static class DependencyInjection
         services.AddSingleton<IOpaqueSessionStore, OpaqueSessionStoreProvider>();
         
         services.Configure<JwtOptions>(config.GetSection(JwtOptions.SectionName));
+        
+        services.AddSingleton<IJwtRevocationService, JwtRevocationService>();
 
 
         var postgreUrl = Environment.GetEnvironmentVariable("DB_HOST");
