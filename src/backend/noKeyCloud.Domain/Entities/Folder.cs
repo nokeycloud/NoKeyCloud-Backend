@@ -18,6 +18,10 @@ public class Folder
     
     public Guid UserId { get; private set; }
     
+    public bool IsDeleted { get; private set; } =  false;
+
+    public DateTime? DeletedAt { get; private set; } = null;
+    
     
     //Navigation
     
@@ -43,6 +47,12 @@ public class Folder
         UpdatedAt = updatedAt;
         ParentFolderId = parentFolderId;
         UserId = userId;
+    }
+    
+    public void SoftDelete()
+    {
+        IsDeleted = true;
+        DeletedAt = DateTime.UtcNow;
     }
     
     //EF
