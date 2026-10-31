@@ -6,4 +6,6 @@ namespace noKeyCloud.Application.Features.Users.Logout;
 
 public record LogoutUserCommand(
     Guid UserId,
-    string RefreshToken) : IRequest<Result<LogoutUserResponse>>;
+    string RefreshToken,
+    string? Jti,
+    TimeSpan RemainingTtl) : IRequest<Result<LogoutUserResponse>>;

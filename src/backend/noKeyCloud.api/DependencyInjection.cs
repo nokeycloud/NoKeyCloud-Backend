@@ -1,6 +1,8 @@
-﻿using System.Text;
+﻿using System.IdentityModel.Tokens.Jwt;
+using System.Text;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.IdentityModel.Tokens;
+using noKeyCloud.Application.Abstractions.Services;
 using noKeyCloud.Application.Configuration;
 
 namespace noKeyCloud.api;
@@ -49,6 +51,31 @@ public static class DependencyInjection
                         {
                             context.Token = context.Request.Cookies["access_token"];
                         }
+                        return Task.CompletedTask;
+                    },
+                    
+                    OnTokenValidated = async context =>
+                    {
+                        var jti = context.Principal?.FindFirst(JwtRegisteredClaimNames.Jti)?.Value;
+                        if (string.IsNullOrEmpty(jti)) return;
+
+                        var revocation = context.HttpContext.RequestServices
+                            .GetRequiredService<IJwtRevocationService>();
+
+                        if (await revocation.IsRevokedAsync(jti, context.HttpContext.RequestAborted))
+                        {
+                            context.Fail("revoked");
+                        }
+                    },
+
+                    OnChallenge = context =>
+                    {
+                        if (context.AuthenticateFailure?.Message != "revoked") return Task.CompletedTask;
+                        context.HandleResponse();
+                        context.Response.StatusCode = StatusCodes.Status401Unauthorized;
+                        context.Response.Headers.Append(
+                            "WWW-Authenticate",
+                            "Bearer error=\"invalid_token\", error_description=\"revoked\"");
                         return Task.CompletedTask;
                     }
                 };
