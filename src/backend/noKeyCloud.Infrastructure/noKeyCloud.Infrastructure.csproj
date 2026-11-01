@@ -24,4 +24,8 @@
       <ProjectReference Include="..\noKeyCloud.Domain\noKeyCloud.Domain.csproj" />
     </ItemGroup>
 
+    <ItemGroup>
+        <InternalsVisibleTo Include="noKeyCloud.Application.UnitTests" />
+    </ItemGroup>
+
 </Project>
