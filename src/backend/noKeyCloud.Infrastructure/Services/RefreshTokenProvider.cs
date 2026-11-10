@@ -1,11 +1,19 @@
-﻿using Microsoft.Extensions.Caching.Distributed;
+﻿using System.Security.Cryptography;
+using System.Text;
 using noKeyCloud.Application.Abstractions.Services;
-using System.Security.Cryptography;
+using noKeyCloud.Application.Security.Models;
+using StackExchange.Redis;
 
 namespace noKeyCloud.Infrastructure.Services;
 
-public class RefreshTokenProvider(IDistributedCache cache) : IRefreshTokenProvider
+public class RefreshTokenProvider(IConnectionMultiplexer redis) : IRefreshTokenProvider
 {
+    private const string TokenKeyPrefix = "RefreshToken";
+    private const string LookupKeyPrefix = "RefreshTokenLookup";
+    private const string UserSessionsKeyPrefix = "UserRefreshSessions";
+
+    private readonly IDatabase _db = redis.GetDatabase();
+
     public string GenerateRefreshToken()
     {
         var randomNumber = new byte[32];
@@ -14,56 +22,114 @@ public class RefreshTokenProvider(IDistributedCache cache) : IRefreshTokenProvid
         return Convert.ToBase64String(randomNumber);
     }
 
-    public async Task<string?> GetRefreshTokenAsync(Guid userId, CancellationToken cancellationToken = default)
+    private static string HashToken(string rawToken)
     {
-        return await cache.GetStringAsync($"RefreshToken_{userId}", cancellationToken);
+        var hash = SHA256.HashData(Encoding.UTF8.GetBytes(rawToken));
+        return Convert.ToHexString(hash);
     }
 
-    public async Task<Guid?> GetUserIdByRefreshTokenAsync(string refreshToken, CancellationToken cancellationToken = default)
+    private static string TokenKey(Guid userId, Guid sessionId)
+        => $"{TokenKeyPrefix}:{userId}:{sessionId}";
+
+    private static string LookupKey(string tokenHash)
+        => $"{LookupKeyPrefix}:{tokenHash}";
+
+    private static string UserSessionsKey(Guid userId)
+        => $"{UserSessionsKeyPrefix}:{userId}";
+
+    public async Task StoreRefreshTokenAsync(
+        Guid userId,
+        Guid sessionId,
+        string refreshToken,
+        TimeSpan expiry,
+        CancellationToken cancellationToken = default)
     {
-        var userIdString = await cache.GetStringAsync($"TokenUser_{refreshToken}", cancellationToken);
-        if (Guid.TryParse(userIdString, out var userId))
+        var newHash = HashToken(refreshToken);
+        var tokenKey = TokenKey(userId, sessionId);
+        var existingHashValue = await _db.StringGetAsync(tokenKey);
+        if (existingHashValue.HasValue)
         {
-            return userId;
+            var existingHash = existingHashValue.ToString();
+            if (!string.IsNullOrEmpty(existingHash) && existingHash != newHash)
+            {
+                await _db.KeyDeleteAsync(LookupKey(existingHash));
+            }
         }
-        return null;
+
+        var sessionRef = $"{userId}:{sessionId}";
+
+        await _db.StringSetAsync((RedisKey)tokenKey, (RedisValue)newHash, expiry, false, When.Always, CommandFlags.None);
+        await _db.StringSetAsync((RedisKey)LookupKey(newHash), (RedisValue)sessionRef, expiry, false, When.Always, CommandFlags.None);
+        await _db.SetAddAsync((RedisKey)UserSessionsKey(userId), (RedisValue)sessionId.ToString(), CommandFlags.None);
+        await _db.KeyExpireAsync((RedisKey)UserSessionsKey(userId), expiry, CommandFlags.None);
     }
 
-    public async Task StoreRefreshTokenAsync(Guid userId, string refreshToken, TimeSpan expiry, CancellationToken cancellationToken = default)
+    public async Task<RefreshTokenInfo?> FindByTokenAsync(
+        string refreshToken,
+        CancellationToken cancellationToken = default)
     {
-        var options = new DistributedCacheEntryOptions
-        {
-            AbsoluteExpirationRelativeToNow = expiry
-        };
+        if (string.IsNullOrEmpty(refreshToken)) return null;
 
-        var oldToken = await GetRefreshTokenAsync(userId, cancellationToken);
-        if (!string.IsNullOrEmpty(oldToken))
+        var tokenHash = HashToken(refreshToken);
+        var sessionRefValue = await _db.StringGetAsync(LookupKey(tokenHash));
+
+        if (!sessionRefValue.HasValue) return null;
+
+        var sessionRef = sessionRefValue.ToString();
+        var parts = sessionRef.Split(':');
+        if (parts.Length != 2
+            || !Guid.TryParse(parts[0], out var userId)
+            || !Guid.TryParse(parts[1], out var sessionId))
         {
-            await cache.RemoveAsync($"TokenUser_{oldToken}", cancellationToken);
+            return null;
         }
-        
-        await cache.SetStringAsync($"RefreshToken_{userId}", refreshToken, options, cancellationToken);
-        await cache.SetStringAsync($"TokenUser_{refreshToken}", userId.ToString(), options, cancellationToken);
+
+        var storedHashValue = await _db.StringGetAsync(TokenKey(userId, sessionId));
+        if (!storedHashValue.HasValue || storedHashValue.ToString() != tokenHash)
+        {
+            return null;
+        }
+
+        return new RefreshTokenInfo(userId, sessionId);
     }
 
-    public async Task InvalidateRefreshTokenAsync(Guid userId, CancellationToken cancellationToken = default)
+    public async Task RevokeSessionAsync(
+        Guid userId,
+        Guid sessionId,
+        CancellationToken cancellationToken = default)
     {
-        var oldToken = await GetRefreshTokenAsync(userId, cancellationToken);
-        if (!string.IsNullOrEmpty(oldToken))
+        var tokenKey = TokenKey(userId, sessionId);
+        var existingHashValue = await _db.StringGetAsync(tokenKey);
+
+        await _db.KeyDeleteAsync(tokenKey);
+
+        if (existingHashValue.HasValue)
         {
-            await cache.RemoveAsync($"TokenUser_{oldToken}", cancellationToken);
+            var existingHash = existingHashValue.ToString();
+            if (!string.IsNullOrEmpty(existingHash))
+            {
+                await _db.KeyDeleteAsync(LookupKey(existingHash));
+            }
         }
 
-        await cache.RemoveAsync($"RefreshToken_{userId}", cancellationToken);
+        await _db.SetRemoveAsync(UserSessionsKey(userId), sessionId.ToString());
     }
 
-    public async Task RevokeRefreshTokenAsync(string refreshToken, CancellationToken cancellationToken = default)
+    public async Task RevokeAllSessionsAsync(
+        Guid userId,
+        CancellationToken cancellationToken = default)
     {
-        var userId = await GetUserIdByRefreshTokenAsync(refreshToken, cancellationToken);
-        if (userId != null)
+        var sessionsKey = UserSessionsKey(userId);
+        var sessionIds = await _db.SetMembersAsync(sessionsKey);
+
+        foreach (var sessionIdValue in sessionIds)
         {
-            await cache.RemoveAsync($"RefreshToken_{userId.Value}", cancellationToken);
-            await cache.RemoveAsync($"TokenUser_{refreshToken}", cancellationToken);
+            if (Guid.TryParse(sessionIdValue.ToString(), out var sessionId))
+            {
+                await RevokeSessionAsync(userId, sessionId, cancellationToken);
+            }
         }
+
+        await _db.KeyDeleteAsync(sessionsKey);
     }
 }

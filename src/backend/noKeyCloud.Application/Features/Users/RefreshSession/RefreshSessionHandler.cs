@@ -14,19 +14,15 @@ public class RefreshSessionHandler(IJwtService jwtService, IRefreshTokenProvider
     private readonly JwtOptions _options = jwtOptions.Value;
     public async Task<Result<RefreshSessionResult>> Handle(RefreshSessionCommand request, CancellationToken cancellationToken)
     {
-        var userId = await refreshTokenProvider.GetUserIdByRefreshTokenAsync(request.RefreshToken, cancellationToken);
+        var tokenInfo = await refreshTokenProvider.FindByTokenAsync(request.RefreshToken, cancellationToken);
 
-        if (userId == null)
+        if (tokenInfo == null)
         {
             return Result<RefreshSessionResult>.Failure("Invalid or expired refresh token.");
         }
 
-        var storedToken = await refreshTokenProvider.GetRefreshTokenAsync(userId.Value, cancellationToken);
-
-        if (string.IsNullOrEmpty(storedToken) || storedToken != request.RefreshToken)
-        {
-            return Result<RefreshSessionResult>.Failure("Invalid or expired refresh token.");
-        }
+        var userId = tokenInfo.UserId;
+        var sessionId = tokenInfo.SessionId;
 
         var newRefreshToken = refreshTokenProvider.GenerateRefreshToken();
 
@@ -34,12 +30,22 @@ public class RefreshSessionHandler(IJwtService jwtService, IRefreshTokenProvider
         {
             return Result<RefreshSessionResult>.Failure("Failed to generate a new refresh token.");
         }
-        await refreshTokenProvider.RevokeRefreshTokenAsync(request.RefreshToken, cancellationToken);
+        
+        await refreshTokenProvider.StoreRefreshTokenAsync(
+            userId,
+            sessionId,
+            newRefreshToken,
+            TimeSpan.FromHours(_options.RefreshTokenLifetimeHours),
+            cancellationToken);
 
-        await refreshTokenProvider.StoreRefreshTokenAsync(userId.Value, newRefreshToken, TimeSpan.FromHours(_options.RefreshTokenLifetimeHours), cancellationToken);
+        var user = await userRepository.GetUserByUserId(userId, cancellationToken);
 
-        var user = await userRepository.GetUserByUserId(userId.Value, cancellationToken);
-        var newJwt = await jwtService.JwtTokenService(userId.Value, user!.IsAdmin);
+        if (user == null)
+        {
+            return Result<RefreshSessionResult>.Failure("User not found.");
+        }
+
+        var newJwt = await jwtService.JwtTokenService(userId, user.IsAdmin, sessionId);
 
         if (string.IsNullOrEmpty(newJwt))
         {

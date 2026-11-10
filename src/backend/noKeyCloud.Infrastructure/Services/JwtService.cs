@@ -11,8 +11,9 @@ namespace noKeyCloud.Infrastructure.Services;
 public class JwtService(IOptions<JwtOptions> jwtOptions) : IJwtService
 
 {
+    public const string SessionIdClaimType = "sid";
     private readonly JwtOptions _options = jwtOptions.Value;
-    public Task<string> JwtTokenService(Guid? id, bool isAdmin)
+    public Task<string> JwtTokenService(Guid? id, bool isAdmin, Guid sessionId)
     {
         var secretKeyString = _options.SecretKey;
 
@@ -26,7 +27,8 @@ public class JwtService(IOptions<JwtOptions> jwtOptions) : IJwtService
         var claims = new[]
         {
             new Claim(JwtRegisteredClaimNames.Sub, id.ToString()!),
-            new Claim(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString())
+            new Claim(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString()),
+            new Claim(SessionIdClaimType, sessionId.ToString())
         };
 
         if (isAdmin)

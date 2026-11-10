@@ -30,7 +30,7 @@ public class JwtServiceTests
         var id = Guid.NewGuid();
 
         var exception = await Assert.ThrowsAsync<InvalidOperationException>(
-            () => jwtService.JwtTokenService(id, false));
+            () => jwtService.JwtTokenService(id, false, Guid.NewGuid()));
 
         Assert.Equal("Missing JWT SecretKey environment variable", exception.Message);
     }
@@ -41,8 +41,9 @@ public class JwtServiceTests
         var options = Options.Create(CreateJwtOptions(accessTokenLifetimeMinutes: 60));
         var jwtService = new JwtService(options);
         var id = Guid.NewGuid();
+        var sessionId = Guid.NewGuid();
 
-        var tokenString = await jwtService.JwtTokenService(id, true);
+        var tokenString = await jwtService.JwtTokenService(id, true, sessionId);
 
         Assert.False(string.IsNullOrEmpty(tokenString));
 
@@ -51,6 +52,20 @@ public class JwtServiceTests
         Assert.Equal(id.ToString(), token.Subject);
         Assert.Contains(token.Claims, c => c.Type == JwtRegisteredClaimNames.Jti);
         Assert.Contains(token.Claims, c => c.Type == ClaimTypes.Role && c.Value == "admin");
+        Assert.Contains(token.Claims, c => c.Type == JwtService.SessionIdClaimType && c.Value == sessionId.ToString());
+    }
+
+    [Fact]
+    public async Task JwtTokenService_NonAdmin_DoesNotIncludeAdminRoleClaim()
+    {
+        var jwtService = new JwtService(Options.Create(CreateJwtOptions()));
+        var sessionId = Guid.NewGuid();
+
+        var token = new JwtSecurityTokenHandler().ReadJwtToken(
+            await jwtService.JwtTokenService(Guid.NewGuid(), false, sessionId));
+
+        Assert.DoesNotContain(token.Claims, c => c.Type == ClaimTypes.Role && c.Value == "admin");
+        Assert.Contains(token.Claims, c => c.Type == JwtService.SessionIdClaimType && c.Value == sessionId.ToString());
     }
 
     [Fact]
@@ -61,7 +76,7 @@ public class JwtServiceTests
         var jwtService = new JwtService(options);
         var before = DateTime.UtcNow;
 
-        var tokenString = await jwtService.JwtTokenService(Guid.NewGuid(), false);
+        var tokenString = await jwtService.JwtTokenService(Guid.NewGuid(), false, Guid.NewGuid());
 
         var token = new JwtSecurityTokenHandler().ReadJwtToken(tokenString);
         var expectedExpiry = before.AddMinutes(lifetimeMinutes);
@@ -78,9 +93,9 @@ public class JwtServiceTests
         var options42 = Options.Create(CreateJwtOptions(accessTokenLifetimeMinutes: 42));
 
         var token15 = new JwtSecurityTokenHandler().ReadJwtToken(
-            await new JwtService(options15).JwtTokenService(Guid.NewGuid(), false));
+            await new JwtService(options15).JwtTokenService(Guid.NewGuid(), false, Guid.NewGuid()));
         var token42 = new JwtSecurityTokenHandler().ReadJwtToken(
-            await new JwtService(options42).JwtTokenService(Guid.NewGuid(), false));
+            await new JwtService(options42).JwtTokenService(Guid.NewGuid(), false, Guid.NewGuid()));
 
         var delta = (token42.ValidTo - token15.ValidTo).TotalMinutes;
         Assert.InRange(delta, 26.0, 28.0);
