@@ -5,7 +5,7 @@ using noKeyCloud.Contracts.Common;
 
 namespace noKeyCloud.Application.Features.Users.Logout;
 
-public class LogoutUserCommandHandler(IRefreshTokenProvider refreshTokenProvider)
+public class LogoutUserCommandHandler(IRefreshTokenProvider refreshTokenProvider, IJwtRevocationService jwtRevocationService)
     : IRequestHandler<LogoutUserCommand, Result<LogoutUserResponse>>
 {
     public async Task<Result<LogoutUserResponse>> Handle(LogoutUserCommand request, CancellationToken cancellationToken)
@@ -18,6 +18,11 @@ public class LogoutUserCommandHandler(IRefreshTokenProvider refreshTokenProvider
         }
         
         await refreshTokenProvider.InvalidateRefreshTokenAsync(request.UserId, cancellationToken);
+        
+        if (!string.IsNullOrWhiteSpace(request.Jti) && request.RemainingTtl > TimeSpan.Zero)
+        {
+            await jwtRevocationService.RevokeAsync(request.Jti, request.RemainingTtl, cancellationToken);
+        }
         
         return Result<LogoutUserResponse>.Success(new LogoutUserResponse("User logged out successfully."));
     }
