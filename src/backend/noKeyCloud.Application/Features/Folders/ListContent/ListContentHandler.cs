@@ -17,10 +17,18 @@ namespace noKeyCloud.Application.Features.Folders.ListContent
 
             try
             {
+                var requestedFolder = await _FolderRepository.GetFolderByFolderId(request.FolderId, cancellationToken);
+                
+                if (requestedFolder == null) return Result<ListContentResponse>.Failure("Folder not found");
+                
+                if(requestedFolder.IsDeleted) return Result<ListContentResponse>.Failure("Folder is deleted");
+                
                 var folder =
                     await _FolderRepository.GetFilesOrContentAsync(request.FolderId, request.UserId, cancellationToken);
 
                 var files = folder.Item1.Where(f => !f.IsDeleted).ToList();
+                
+                var folders = folder.Item2.Where(f => !f.IsDeleted).ToList();
 
                 var response = new ListContentResponse
                 (
@@ -36,7 +44,7 @@ namespace noKeyCloud.Application.Features.Folders.ListContent
                         UpdatedAt: f.UpdatedAt
                     )).ToList(),
 
-                    Folders: folder.Item2.Select(f => new FolderResponse
+                    Folders: folders.Select(f => new FolderResponse
                     (
                         FolderId: f.Id,
                         NameEncrypted: f.EncryptedName,

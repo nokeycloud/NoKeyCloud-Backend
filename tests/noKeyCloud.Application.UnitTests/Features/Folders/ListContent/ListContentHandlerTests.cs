@@ -54,6 +54,10 @@ public class ListContentHandlerTests
                 userId: userId
             )
         };
+        
+        repoMock
+            .Setup(r => r.GetFolderByFolderId(folderId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(folders[0]);
 
         repoMock
             .Setup(r => r.GetFilesOrContentAsync(folderId, userId, It.IsAny<CancellationToken>()))

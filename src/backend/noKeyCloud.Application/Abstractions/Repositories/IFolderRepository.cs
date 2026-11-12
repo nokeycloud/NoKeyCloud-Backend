@@ -18,4 +18,8 @@ public interface IFolderRepository
     Task<Folder> GetUserHomeFolder(Guid UserId, CancellationToken cancellationToken);
     
     Task<Folder?> GetByIdAndUserIdAsync(Guid folderId, Guid userId, CancellationToken cancellationToken);
+
+    Task<(bool, string)> SoftDeleteFoldersById(List<Guid> foldersId, Guid userId, CancellationToken cancellationToken);
+    
+    Task<(bool,string)> GetFolderAndSubFoldersById(List<Guid> foldersId, Guid folderId, Guid userId, CancellationToken cancellationToken);
 }

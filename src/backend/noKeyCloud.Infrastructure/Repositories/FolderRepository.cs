@@ -53,4 +53,39 @@ public class FolderRepository : IFolderRepository
             .FirstOrDefaultAsync(x => x.Id == folderId && x.UserId == userId, cancellationToken);
     }
 
+    public async Task<(bool,string)> SoftDeleteFoldersById(List<Guid> foldersId, Guid userId, CancellationToken cancellationToken)
+    {
+        
+        var folders = await _context.Folders
+            .Where(f => f.UserId == userId && !f.IsDeleted && foldersId.Contains(f.Id))
+            .ToListAsync(cancellationToken);
+
+        if (folders.Count != foldersId.Count) return (false, "Not all folders were found");
+        
+        foreach (var folder in folders) folder.SoftDelete();
+
+        await _context.SaveChangesAsync(cancellationToken);
+        
+        return (true,"Folders successfully deleted");
+            
+    }
+
+    public async Task<(bool,string)> GetFolderAndSubFoldersById(List<Guid> foldersId ,Guid folderId, Guid userId, CancellationToken cancellationToken)
+    {
+        var folder = await _context.Folders.Include(f => f.SubFolders).FirstOrDefaultAsync(f => f.UserId == userId && f.Id == folderId, cancellationToken);
+        
+        if(folder == null) return (false,"Could not find folder");
+
+        if (folder.ParentFolderId == null) return (false,"You can not delete root folder");
+        
+        foldersId.Add(folder.Id);
+
+        foreach (var subForder in folder.SubFolders)
+        {
+            var response = await GetFolderAndSubFoldersById(foldersId, subForder.Id, subForder.UserId, cancellationToken);
+            if(!response.Item1) return  response;
+        }
+        
+        return (true,"Folders successfully found");
+    }
 }
