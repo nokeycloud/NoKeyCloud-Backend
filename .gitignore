@@ -48,6 +48,7 @@ nunit-*.xml
 .idea/
 .vs/
 .env
+docker-compose.override.yml
 
 *.user
 
