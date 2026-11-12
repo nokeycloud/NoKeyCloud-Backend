@@ -175,10 +175,20 @@ public class AuthenticateController : ControllerBase
         {
             return Unauthorized("User context is invalid.");
         }
+        
+        var jti = User.FindFirstValue(JwtRegisteredClaimNames.Jti);
+        var expClaim = User.FindFirstValue(JwtRegisteredClaimNames.Exp);
+    
+        var remainingTtl = TimeSpan.Zero;
+        if (long.TryParse(expClaim, out var expUnix))
+        {
+            var expDate = DateTimeOffset.FromUnixTimeSeconds(expUnix).UtcDateTime;
+            remainingTtl = expDate - DateTime.UtcNow;
+        }
 
         Request.Cookies.TryGetValue("refresh_token", out var refreshTokenCookie);
 
-        var command = new LogoutUserCommand(userId, refreshTokenCookie ?? "");
+        var command = new LogoutUserCommand(userId, refreshTokenCookie ?? "", jti, remainingTtl);
 
         var result = await _mediator.Send(command);
 

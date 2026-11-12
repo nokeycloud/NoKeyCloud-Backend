@@ -20,7 +20,7 @@ public class RemoveUserCommandHandler(IUserRepository userRepository, IRefreshTo
         
         if (!result.IsSuccess) return Result<RemoveUserResponse>.Failure(result.Error);
 
-        await refreshTokenProvider.InvalidateRefreshTokenAsync(userId, cancellationToken);
+        await refreshTokenProvider.RevokeAllSessionsAsync(userId, cancellationToken);
         
         var response = new RemoveUserResponse("User successfully removed");
 

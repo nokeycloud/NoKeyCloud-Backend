@@ -1,12 +1,7 @@
-﻿using System;
-using System.Collections.Generic;
-using System.IdentityModel.Tokens.Jwt;
-using System.Text;
-
-namespace noKeyCloud.Application.Abstractions.Services
+﻿namespace noKeyCloud.Application.Abstractions.Services
 {
     public interface IJwtService
     {
-        Task<string> JwtTokenService(Guid? Id, bool isAdmin);
+        Task<string> JwtTokenService(Guid? id, bool isAdmin, Guid sessionId);
     }
 }

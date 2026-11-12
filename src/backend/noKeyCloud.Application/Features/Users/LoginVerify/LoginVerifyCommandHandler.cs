@@ -41,10 +41,11 @@ namespace noKeyCloud.Application.Features.Users.LoginVerify;
 
             var userId = nullableUserId.Value;
             var user = await userRepository.GetUserByUserId(userId, cancellationToken);
-            var token = await jwtService.JwtTokenService(userId, user!.IsAdmin);
+            var authSessionId = Guid.NewGuid();
+            var token = await jwtService.JwtTokenService(userId, user!.IsAdmin, authSessionId);
 
             var refreshToken = refreshTokenProvider.GenerateRefreshToken();
-            await refreshTokenProvider.StoreRefreshTokenAsync(userId, refreshToken, TimeSpan.FromHours(_options.RefreshTokenLifetimeHours), cancellationToken);
+            await refreshTokenProvider.StoreRefreshTokenAsync(userId, authSessionId, refreshToken, TimeSpan.FromHours(_options.RefreshTokenLifetimeHours), cancellationToken);
             var rootFolder = await folderRepository.GetUserHomeFolder(userId, cancellationToken);
 
             var deleteSession = await sessionStore.DeleteSessionAsync(sessionIdGuid);
