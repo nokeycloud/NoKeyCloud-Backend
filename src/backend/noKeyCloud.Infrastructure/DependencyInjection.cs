@@ -4,6 +4,7 @@ using Microsoft.Extensions.DependencyInjection;
 using noKeyCloud.Application.Abstractions.Repositories;
 using noKeyCloud.Application.Abstractions.Services;
 using noKeyCloud.Application.Configuration;
+using noKeyCloud.Infrastructure.Options;
 using noKeyCloud.Infrastructure.Repositories;
 using noKeyCloud.Infrastructure.Security.Opaque;
 using noKeyCloud.Infrastructure.Services;
@@ -58,6 +59,12 @@ public static class DependencyInjection
         services.AddSingleton<IOpaqueSessionStore, OpaqueSessionStoreProvider>();
         
         services.Configure<JwtOptions>(config.GetSection(JwtOptions.SectionName));
+        
+        services.Configure<UploadCleanupOptions>(config.GetSection(UploadCleanupOptions.SectionName));
+        
+        services.AddSingleton<IUploadSessionStore, RedisUploadSessionStore>();
+        
+        services.AddHostedService<TempFileCleanupService>();
 
 
         var postgreUrl = Environment.GetEnvironmentVariable("DB_HOST");
