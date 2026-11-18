@@ -1,6 +1,8 @@
 ﻿using Microsoft.EntityFrameworkCore;
 using noKeyCloud.Application.Abstractions.Repositories;
+using noKeyCloud.Contracts.Shared;
 using noKeyCloud.Domain.Entities;
+using System.Security.Cryptography.Xml;
 
 namespace noKeyCloud.Infrastructure.Repositories;
 
@@ -53,39 +55,65 @@ public class FolderRepository : IFolderRepository
             .FirstOrDefaultAsync(x => x.Id == folderId && x.UserId == userId, cancellationToken);
     }
 
-    public async Task<(bool,string)> SoftDeleteFoldersById(List<Guid> foldersId, Guid userId, CancellationToken cancellationToken)
+    public async Task<(bool,string)> SoftDeleteFoldersById(List<Guid> foldersId, Guid userId, byte[] encryptedKey, CancellationToken cancellationToken)
     {
-        
+        var ids = foldersId.Distinct().ToList();
+
         var folders = await _context.Folders
-            .Where(f => f.UserId == userId && !f.IsDeleted && foldersId.Contains(f.Id))
+            .Where(f => f.UserId == userId && !f.IsDeleted && ids.Contains(f.Id))
             .ToListAsync(cancellationToken);
 
-        if (folders.Count != foldersId.Count) return (false, "Not all folders were found");
-        
-        foreach (var folder in folders) folder.SoftDelete();
+        if (folders.Count != ids.Count) return (false, "Not all folders were found");
+
+        foreach (var folder in folders)
+        {
+            var trash = new Trash(
+                id: folder.Id,
+                encryptedName: folder.EncryptedName,
+                sizeBytes: 0,
+                deletedAt: DateTime.UtcNow,
+                type: TrashType.Folder,
+                encryptedKey: encryptedKey,
+                userId: folder.UserId
+                );
+            folder.SoftDelete();
+            await _context.Trashes.AddAsync(trash, cancellationToken);
+        }
 
         await _context.SaveChangesAsync(cancellationToken);
         
         return (true,"Folders successfully deleted");
-            
     }
 
-    public async Task<(bool,string)> GetFolderAndSubFoldersById(List<Guid> foldersId ,Guid folderId, Guid userId, CancellationToken cancellationToken)
+    public async Task<(bool,string)> GetFolderAndSubFoldersById(List<Guid> foldersId, IReadOnlyList<Guid> folderIds, Guid userId, CancellationToken cancellationToken)
     {
-        var folder = await _context.Folders.Include(f => f.SubFolders).FirstOrDefaultAsync(f => f.UserId == userId && f.Id == folderId, cancellationToken);
-        
-        if(folder == null) return (false,"Could not find folder");
-
-        if (folder.ParentFolderId == null) return (false,"You can not delete root folder");
-        
-        foldersId.Add(folder.Id);
-
-        foreach (var subForder in folder.SubFolders)
+        foreach (var folderId in folderIds.Distinct())
         {
-            var response = await GetFolderAndSubFoldersById(foldersId, subForder.Id, subForder.UserId, cancellationToken);
-            if(!response.Item1) return  response;
+            var response = await CollectFolderAndSubFolderIds(foldersId, folderId, userId, cancellationToken);
+            if (!response.Item1) return response;
         }
-        
-        return (true,"Folders successfully found");
+
+        return (true, "Folders successfully found");
+    }
+
+    private async Task<(bool, string)> CollectFolderAndSubFolderIds(List<Guid> foldersId, Guid folderId, Guid userId, CancellationToken cancellationToken)
+    {
+        var folder = await _context.Folders
+            .Include(f => f.SubFolders)
+            .FirstOrDefaultAsync(f => f.UserId == userId && f.Id == folderId, cancellationToken);
+
+        if (folder == null) return (false, "Could not find folder");
+
+        if (folder.ParentFolderId == null) return (false, "You can not delete root folder");
+
+        if (!foldersId.Contains(folder.Id)) foldersId.Add(folder.Id);
+
+        foreach (var subFolder in folder.SubFolders)
+        {
+            var response = await CollectFolderAndSubFolderIds(foldersId, subFolder.Id, userId, cancellationToken);
+            if (!response.Item1) return response;
+        }
+
+        return (true, "Folders successfully found");
     }
 }

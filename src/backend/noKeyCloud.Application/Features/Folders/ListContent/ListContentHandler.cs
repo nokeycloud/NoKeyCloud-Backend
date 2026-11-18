@@ -41,7 +41,9 @@ namespace noKeyCloud.Application.Features.Folders.ListContent
                         FileKeyEncrypted: f.EncryptedKey,
                         CheckSum: f.Checksum,
                         CreatedAt: f.CreatedAt,
-                        UpdatedAt: f.UpdatedAt
+                        UpdatedAt: f.UpdatedAt,
+                        IsDeleted: f.IsDeleted,
+                        DeletedAt: f.DeletedAt
                     )).ToList(),
 
                     Folders: folders.Select(f => new FolderResponse

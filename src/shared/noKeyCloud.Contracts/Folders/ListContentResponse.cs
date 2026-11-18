@@ -12,7 +12,9 @@ public record FileResponse(
     byte[] FileKeyEncrypted,
     byte[] CheckSum,
     DateTime CreatedAt,
-    DateTime UpdatedAt
+    DateTime UpdatedAt,
+    Boolean IsDeleted,
+    DateTime? DeletedAt
 );
 
 public record ListContentResponse(

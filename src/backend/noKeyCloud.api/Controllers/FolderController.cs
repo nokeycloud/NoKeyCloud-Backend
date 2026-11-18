@@ -1,7 +1,6 @@
 using MediatR;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using noKeyCloud.api.Controllers.DTOs;
 using noKeyCloud.Application.Features.Folders.CreateFolder;
 using noKeyCloud.Application.Features.Folders.ListContent;
 using noKeyCloud.Contracts.Folders;
@@ -9,7 +8,6 @@ using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using noKeyCloud.Application.Features.Folders;
 using noKeyCloud.Application.Features.Folders.GetAncestry;
-using noKeyCloud.Application.Features.Folders.SoftDeleteFolder;
 
 
 namespace noKeyCloud.api.Controllers;
@@ -81,28 +79,5 @@ public class FolderController : ControllerBase
         }
 
         return NotFound(result.Error);
-    }
-    
-    [Authorize]
-    [HttpPost("trash/{id}")]
-    public async Task<IActionResult> SoftDeleteFolder([FromRoute] Guid id)
-    {
-        var userIdClaim = User.FindFirstValue(JwtRegisteredClaimNames.Sub);
-        if (string.IsNullOrEmpty(userIdClaim) || !Guid.TryParse(userIdClaim, out var userId))
-        {
-            return Unauthorized("Invalid token claims");
-        }
-        
-        var command = new SoftDeleteFolderCommand(
-            userId,
-            id);
-
-        var result = await _mediator.Send(command);
-
-        if (result.IsSuccess)
-        {
-            return Ok();
-        }
-        return BadRequest(result.Error);
     }
 }

@@ -1,0 +1,4 @@
+# Shell scripts run inside Linux containers (nginx entrypoint, healthchecks).
+# They must keep LF endings even when checked out on Windows with core.autocrlf=true,
+# otherwise the kernel sees "#!/bin/sh\r" and fails with "no such file or directory".
+*.sh text eol=lf

@@ -1,4 +1,4 @@
-﻿namespace noKeyCloud.api.Controllers.DTOs;
+﻿namespace noKeyCloud.Contracts.Folders;
 
 public record CreateFolderRequest(
     byte[] EncryptedName,
