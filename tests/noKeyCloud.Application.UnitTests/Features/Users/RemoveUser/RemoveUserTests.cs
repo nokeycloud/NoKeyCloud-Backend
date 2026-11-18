@@ -12,17 +12,17 @@ public class RemoveUserTests
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
 
     private readonly Mock<IUserRepository> _userRepositoryMock;
-    private readonly Mock<IRefreshTokenProvider> _refreshTokenProviderMock;
+    private readonly Mock<IAuthService> _authServiceMock;
     private readonly RemoveUserCommandHandler _handler;
 
     public RemoveUserTests()
     {
         _userRepositoryMock = new Mock<IUserRepository>();
-        _refreshTokenProviderMock = new Mock<IRefreshTokenProvider>();
+        _authServiceMock = new Mock<IAuthService>{DefaultValue = DefaultValue.Mock};
 
         _handler = new RemoveUserCommandHandler(
             _userRepositoryMock.Object,
-            _refreshTokenProviderMock.Object);
+            _authServiceMock.Object);
     }
 
     private static User CreateFakeUser(Guid id) =>
@@ -73,8 +73,8 @@ public class RemoveUserTests
 
         await _handler.Handle(command, Ct);
 
-        _refreshTokenProviderMock.Verify(
-            x => x.RevokeAllSessionsAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()),
+        _authServiceMock.Verify(
+            x => x.RefreshTokens.RevokeAllSessionsAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()),
             Times.Never);
     }
 
@@ -110,8 +110,8 @@ public class RemoveUserTests
 
         await _handler.Handle(new RemoveUserCommand(userId), Ct);
 
-        _refreshTokenProviderMock.Verify(
-            x => x.RevokeAllSessionsAsync(userId, It.IsAny<CancellationToken>()),
+        _authServiceMock.Verify(
+            x => x.RefreshTokens.RevokeAllSessionsAsync(userId, It.IsAny<CancellationToken>()),
             Times.Once);
     }
 
@@ -147,8 +147,8 @@ public class RemoveUserTests
 
         await _handler.Handle(new RemoveUserCommand(userId), Ct);
 
-        _refreshTokenProviderMock.Verify(
-            x => x.RevokeAllSessionsAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()),
+        _authServiceMock.Verify(
+            x => x.RefreshTokens.RevokeAllSessionsAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()),
             Times.Never);
     }
 
@@ -163,14 +163,14 @@ public class RemoveUserTests
         _userRepositoryMock
             .Setup(x => x.RemoveUserByUser(user, Ct))
             .ReturnsAsync(Result.Success());
-        _refreshTokenProviderMock
-            .Setup(x => x.RevokeAllSessionsAsync(userId, Ct))
+        _authServiceMock
+            .Setup(x => x.RefreshTokens.RevokeAllSessionsAsync(userId, Ct))
             .Returns(Task.CompletedTask);
 
         await _handler.Handle(new RemoveUserCommand(userId), Ct);
 
         _userRepositoryMock.Verify(x => x.GetUserByUserId(userId, Ct), Times.Once);
         _userRepositoryMock.Verify(x => x.RemoveUserByUser(user, Ct), Times.Once);
-        _refreshTokenProviderMock.Verify(x => x.RevokeAllSessionsAsync(userId, Ct), Times.Once);
+        _authServiceMock.Verify(x => x.RefreshTokens.RevokeAllSessionsAsync(userId, Ct), Times.Once);
     }
 }

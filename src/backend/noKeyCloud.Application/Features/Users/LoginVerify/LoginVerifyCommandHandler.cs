@@ -9,12 +9,9 @@ using noKeyCloud.Contracts.Common;
 namespace noKeyCloud.Application.Features.Users.LoginVerify;
 
     public class LoginVerifyCommandHandler(
-        IJwtService jwtService,
-        IOpaqueSessionStore sessionStore,
-        IRefreshTokenProvider refreshTokenProvider,
+        IAuthService authService,
         IFolderRepository folderRepository,
         IUserRepository userRepository,
-        IOpaqueAuthService opaqueAuthService,
         IOptions<JwtOptions> jwtOptions)
         : IRequestHandler<LoginVerifyCommand, Result<LoginVerifyResult>>
     {
@@ -25,15 +22,15 @@ namespace noKeyCloud.Application.Features.Users.LoginVerify;
         if (!Guid.TryParse(request.SessionId, out var sessionIdGuid))
             return Result<LoginVerifyResult>.Failure("Invalid session ID format.");
 
-        var session = await sessionStore.GetServerLoginStateAsync(sessionIdGuid);
+        var session = await authService.OpaqueSessions.GetServerLoginStateAsync(sessionIdGuid);
 
         if (session == null) return Result<LoginVerifyResult>.Failure("Session not found.");
 
         try
         {
-            var sessionKey = opaqueAuthService.ServerFinishLogin(session, request.FinishLoginRequest);
+            var sessionKey = authService.Opaque.ServerFinishLogin(session, request.FinishLoginRequest);
             
-            var nullableUserId = await sessionStore.GetUserIdAsync(sessionIdGuid);
+            var nullableUserId = await authService.OpaqueSessions.GetUserIdAsync(sessionIdGuid);
             if (nullableUserId == null)
             {
                 return Result<LoginVerifyResult>.Failure("Could not retrieve user associated with the session.");
@@ -42,13 +39,13 @@ namespace noKeyCloud.Application.Features.Users.LoginVerify;
             var userId = nullableUserId.Value;
             var user = await userRepository.GetUserByUserId(userId, cancellationToken);
             var authSessionId = Guid.NewGuid();
-            var token = await jwtService.JwtTokenService(userId, user!.IsAdmin, authSessionId);
+            var token = await authService.Jwt.JwtTokenService(userId, user!.IsAdmin, authSessionId);
 
-            var refreshToken = refreshTokenProvider.GenerateRefreshToken();
-            await refreshTokenProvider.StoreRefreshTokenAsync(userId, authSessionId, refreshToken, TimeSpan.FromHours(_options.RefreshTokenLifetimeHours), cancellationToken);
+            var refreshToken = authService.RefreshTokens.GenerateRefreshToken();
+            await authService.RefreshTokens.StoreRefreshTokenAsync(userId, authSessionId, refreshToken, TimeSpan.FromHours(_options.RefreshTokenLifetimeHours), cancellationToken);
             var rootFolder = await folderRepository.GetUserHomeFolder(userId, cancellationToken);
 
-            var deleteSession = await sessionStore.DeleteSessionAsync(sessionIdGuid);
+            var deleteSession = await authService.OpaqueSessions.DeleteSessionAsync(sessionIdGuid);
 
             if (!deleteSession) return Result<LoginVerifyResult>.Failure("Could not remove session");
             
@@ -66,7 +63,7 @@ namespace noKeyCloud.Application.Features.Users.LoginVerify;
         }
         catch (Exception)
         {
-            await sessionStore.DeleteSessionAsync(sessionIdGuid);
+            await authService.OpaqueSessions.DeleteSessionAsync(sessionIdGuid);
             return Result<LoginVerifyResult>.Failure("Login verification failed");
         }
     }

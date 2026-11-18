@@ -7,17 +7,14 @@ namespace noKeyCloud.Application.UnitTests.Features.Users.Logout;
 
 public class LogoutUserCommandHandlerTests
 {
-    private readonly Mock<IRefreshTokenProvider> _refreshTokenProviderMock;
-    private readonly Mock<IJwtRevocationService> _jwtRevocationServiceMock;
+    private readonly Mock<IAuthService> _authServiceMock;
     private readonly LogoutUserCommandHandler _handler;
 
     public LogoutUserCommandHandlerTests()
     {
-        _refreshTokenProviderMock = new Mock<IRefreshTokenProvider>();
-        _jwtRevocationServiceMock = new Mock<IJwtRevocationService>();
+        _authServiceMock = new Mock<IAuthService>{DefaultValue = DefaultValue.Mock};
         _handler = new LogoutUserCommandHandler(
-            _refreshTokenProviderMock.Object,
-            _jwtRevocationServiceMock.Object);
+            _authServiceMock.Object);
     }
 
     [Fact]
@@ -29,8 +26,8 @@ public class LogoutUserCommandHandlerTests
         const string jti = "jwt-id-123";
         var remainingTtl = TimeSpan.FromMinutes(10);
 
-        _refreshTokenProviderMock
-            .Setup(x => x.FindByTokenAsync(token, It.IsAny<CancellationToken>()))
+        _authServiceMock
+            .Setup(x => x.RefreshTokens.FindByTokenAsync(token, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new RefreshTokenInfo(userId, sessionId));
 
         var result = await _handler.Handle(
@@ -41,16 +38,16 @@ public class LogoutUserCommandHandlerTests
         Assert.NotNull(result.Value);
         Assert.Equal("User logged out successfully.", result.Value.Message);
 
-        _refreshTokenProviderMock.Verify(
-            x => x.RevokeSessionAsync(userId, sessionId, It.IsAny<CancellationToken>()),
+        _authServiceMock.Verify(
+            x => x.RefreshTokens.RevokeSessionAsync(userId, sessionId, It.IsAny<CancellationToken>()),
             Times.Once);
 
-        _refreshTokenProviderMock.Verify(
-            x => x.RevokeAllSessionsAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()),
+        _authServiceMock.Verify(
+            x => x.RefreshTokens.RevokeAllSessionsAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()),
             Times.Never);
 
-        _jwtRevocationServiceMock.Verify(
-            x => x.RevokeAsync(jti, remainingTtl, It.IsAny<CancellationToken>()),
+        _authServiceMock.Verify(
+            x => x.Jwt.RevokeAsync(jti, remainingTtl, It.IsAny<CancellationToken>()),
             Times.Once);
     }
 
@@ -61,8 +58,8 @@ public class LogoutUserCommandHandlerTests
         var sessionId = Guid.NewGuid();
         const string token = "valid-token";
 
-        _refreshTokenProviderMock
-            .Setup(x => x.FindByTokenAsync(token, It.IsAny<CancellationToken>()))
+        _authServiceMock
+            .Setup(x => x.RefreshTokens.FindByTokenAsync(token, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new RefreshTokenInfo(userId, sessionId));
 
         var result = await _handler.Handle(
@@ -70,25 +67,25 @@ public class LogoutUserCommandHandlerTests
             CancellationToken.None);
 
         Assert.True(result.IsSuccess);
-        _refreshTokenProviderMock.Verify(
-            x => x.RevokeSessionAsync(userId, sessionId, It.IsAny<CancellationToken>()),
+        _authServiceMock.Verify(
+            x => x.RefreshTokens.RevokeSessionAsync(userId, sessionId, It.IsAny<CancellationToken>()),
             Times.Once);
-        _jwtRevocationServiceMock.Verify(
-            x => x.RevokeAsync(It.IsAny<string>(), It.IsAny<TimeSpan>(), It.IsAny<CancellationToken>()),
+        _authServiceMock.Verify(
+            x => x.Jwt.RevokeAsync(It.IsAny<string>(), It.IsAny<TimeSpan>(), It.IsAny<CancellationToken>()),
             Times.Never);
     }
 
     [Theory]
-    [InlineData("")]       // empty jti
-    [InlineData("   ")]    // whitespace jti
+    [InlineData("")]
+    [InlineData("   ")]
     public async Task Handle_ValidToken_WithBlankJti_DoesNotDenylistJwt(string blankJti)
     {
         var userId = Guid.NewGuid();
         var sessionId = Guid.NewGuid();
         const string token = "valid-token";
 
-        _refreshTokenProviderMock
-            .Setup(x => x.FindByTokenAsync(token, It.IsAny<CancellationToken>()))
+        _authServiceMock
+            .Setup(x => x.RefreshTokens.FindByTokenAsync(token, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new RefreshTokenInfo(userId, sessionId));
 
         var result = await _handler.Handle(
@@ -96,8 +93,8 @@ public class LogoutUserCommandHandlerTests
             CancellationToken.None);
 
         Assert.True(result.IsSuccess);
-        _jwtRevocationServiceMock.Verify(
-            x => x.RevokeAsync(It.IsAny<string>(), It.IsAny<TimeSpan>(), It.IsAny<CancellationToken>()),
+        _authServiceMock.Verify(
+            x => x.Jwt.RevokeAsync(It.IsAny<string>(), It.IsAny<TimeSpan>(), It.IsAny<CancellationToken>()),
             Times.Never);
     }
 
@@ -108,8 +105,8 @@ public class LogoutUserCommandHandlerTests
         var sessionId = Guid.NewGuid();
         const string token = "valid-token";
 
-        _refreshTokenProviderMock
-            .Setup(x => x.FindByTokenAsync(token, It.IsAny<CancellationToken>()))
+        _authServiceMock
+            .Setup(x => x.RefreshTokens.FindByTokenAsync(token, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new RefreshTokenInfo(userId, sessionId));
 
         var result = await _handler.Handle(
@@ -117,8 +114,8 @@ public class LogoutUserCommandHandlerTests
             CancellationToken.None);
 
         Assert.True(result.IsSuccess);
-        _jwtRevocationServiceMock.Verify(
-            x => x.RevokeAsync(It.IsAny<string>(), It.IsAny<TimeSpan>(), It.IsAny<CancellationToken>()),
+        _authServiceMock.Verify(
+            x => x.Jwt.RevokeAsync(It.IsAny<string>(), It.IsAny<TimeSpan>(), It.IsAny<CancellationToken>()),
             Times.Never);
     }
 
@@ -127,8 +124,8 @@ public class LogoutUserCommandHandlerTests
     {
         var userId = Guid.NewGuid();
 
-        _refreshTokenProviderMock
-            .Setup(x => x.FindByTokenAsync("unknown", It.IsAny<CancellationToken>()))
+        _authServiceMock
+            .Setup(x => x.RefreshTokens.FindByTokenAsync("unknown", It.IsAny<CancellationToken>()))
             .ReturnsAsync((RefreshTokenInfo?)null);
 
         var result = await _handler.Handle(
@@ -138,11 +135,11 @@ public class LogoutUserCommandHandlerTests
         Assert.False(result.IsSuccess);
         Assert.Contains("Token.NotFound", result.Error);
 
-        _refreshTokenProviderMock.Verify(
-            x => x.RevokeSessionAsync(It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<CancellationToken>()),
+        _authServiceMock.Verify(
+            x => x.RefreshTokens.RevokeSessionAsync(It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<CancellationToken>()),
             Times.Never);
-        _jwtRevocationServiceMock.Verify(
-            x => x.RevokeAsync(It.IsAny<string>(), It.IsAny<TimeSpan>(), It.IsAny<CancellationToken>()),
+        _authServiceMock.Verify(
+            x => x.Jwt.RevokeAsync(It.IsAny<string>(), It.IsAny<TimeSpan>(), It.IsAny<CancellationToken>()),
             Times.Never);
     }
 
@@ -154,8 +151,8 @@ public class LogoutUserCommandHandlerTests
         var sessionId = Guid.NewGuid();
         const string token = "foreign-token";
 
-        _refreshTokenProviderMock
-            .Setup(x => x.FindByTokenAsync(token, It.IsAny<CancellationToken>()))
+        _authServiceMock
+            .Setup(x => x.RefreshTokens.FindByTokenAsync(token, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new RefreshTokenInfo(actualOwnerId, sessionId));
 
         var result = await _handler.Handle(
@@ -165,11 +162,11 @@ public class LogoutUserCommandHandlerTests
         Assert.False(result.IsSuccess);
         Assert.Contains("Token.NotFound", result.Error);
 
-        _refreshTokenProviderMock.Verify(
-            x => x.RevokeSessionAsync(It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<CancellationToken>()),
+        _authServiceMock.Verify(
+            x => x.RefreshTokens.RevokeSessionAsync(It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<CancellationToken>()),
             Times.Never);
-        _jwtRevocationServiceMock.Verify(
-            x => x.RevokeAsync(It.IsAny<string>(), It.IsAny<TimeSpan>(), It.IsAny<CancellationToken>()),
+        _authServiceMock.Verify(
+            x => x.Jwt.RevokeAsync(It.IsAny<string>(), It.IsAny<TimeSpan>(), It.IsAny<CancellationToken>()),
             Times.Never);
     }
 
@@ -185,16 +182,16 @@ public class LogoutUserCommandHandlerTests
         using var cts = new CancellationTokenSource();
         var ct = cts.Token;
 
-        _refreshTokenProviderMock
-            .Setup(x => x.FindByTokenAsync(token, ct))
+        _authServiceMock
+            .Setup(x => x.RefreshTokens.FindByTokenAsync(token, ct))
             .ReturnsAsync(new RefreshTokenInfo(userId, sessionId));
 
         await _handler.Handle(
             new LogoutUserCommand(userId, token, jti, ttl),
             cts.Token);
 
-        _refreshTokenProviderMock.Verify(x => x.FindByTokenAsync(token, ct), Times.Once);
-        _refreshTokenProviderMock.Verify(x => x.RevokeSessionAsync(userId, sessionId, ct), Times.Once);
-        _jwtRevocationServiceMock.Verify(x => x.RevokeAsync(jti, ttl, ct), Times.Once);
+        _authServiceMock.Verify(x => x.RefreshTokens.FindByTokenAsync(token, ct), Times.Once);
+        _authServiceMock.Verify(x => x.RefreshTokens.RevokeSessionAsync(userId, sessionId, ct), Times.Once);
+        _authServiceMock.Verify(x => x.Jwt.RevokeAsync(jti, ttl, ct), Times.Once);
     }
 }

@@ -8,13 +8,13 @@ using noKeyCloud.Contracts.Common;
 
 namespace noKeyCloud.Application.Features.Users.RefreshSession;
 
-public class RefreshSessionHandler(IJwtService jwtService, IRefreshTokenProvider refreshTokenProvider, IUserRepository userRepository, IOptions<JwtOptions> jwtOptions)
+public class RefreshSessionHandler(IAuthService authService, IUserRepository userRepository, IOptions<JwtOptions> jwtOptions)
     : IRequestHandler<RefreshSessionCommand, Result<RefreshSessionResult>>
 {
     private readonly JwtOptions _options = jwtOptions.Value;
     public async Task<Result<RefreshSessionResult>> Handle(RefreshSessionCommand request, CancellationToken cancellationToken)
     {
-        var tokenInfo = await refreshTokenProvider.FindByTokenAsync(request.RefreshToken, cancellationToken);
+        var tokenInfo = await authService.RefreshTokens.FindByTokenAsync(request.RefreshToken, cancellationToken);
 
         if (tokenInfo == null)
         {
@@ -24,14 +24,14 @@ public class RefreshSessionHandler(IJwtService jwtService, IRefreshTokenProvider
         var userId = tokenInfo.UserId;
         var sessionId = tokenInfo.SessionId;
 
-        var newRefreshToken = refreshTokenProvider.GenerateRefreshToken();
+        var newRefreshToken = authService.RefreshTokens.GenerateRefreshToken();
 
         if (string.IsNullOrEmpty(newRefreshToken))
         {
             return Result<RefreshSessionResult>.Failure("Failed to generate a new refresh token.");
         }
         
-        await refreshTokenProvider.StoreRefreshTokenAsync(
+        await authService.RefreshTokens.StoreRefreshTokenAsync(
             userId,
             sessionId,
             newRefreshToken,
@@ -45,7 +45,7 @@ public class RefreshSessionHandler(IJwtService jwtService, IRefreshTokenProvider
             return Result<RefreshSessionResult>.Failure("User not found.");
         }
 
-        var newJwt = await jwtService.JwtTokenService(userId, user.IsAdmin, sessionId);
+        var newJwt = await authService.Jwt.JwtTokenService(userId, user.IsAdmin, sessionId);
 
         if (string.IsNullOrEmpty(newJwt))
         {

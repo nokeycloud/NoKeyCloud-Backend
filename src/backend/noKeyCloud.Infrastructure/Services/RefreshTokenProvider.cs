@@ -12,7 +12,7 @@ public class RefreshTokenProvider(IConnectionMultiplexer redis) : IRefreshTokenP
     private const string LookupKeyPrefix = "RefreshTokenLookup";
     private const string UserSessionsKeyPrefix = "UserRefreshSessions";
 
-    private readonly IDatabase _db = redis.GetDatabase();
+    private readonly IDatabase _cache = redis.GetDatabase();
 
     public string GenerateRefreshToken()
     {
@@ -46,22 +46,22 @@ public class RefreshTokenProvider(IConnectionMultiplexer redis) : IRefreshTokenP
     {
         var newHash = HashToken(refreshToken);
         var tokenKey = TokenKey(userId, sessionId);
-        var existingHashValue = await _db.StringGetAsync(tokenKey);
+        var existingHashValue = await _cache.StringGetAsync(tokenKey);
         if (existingHashValue.HasValue)
         {
             var existingHash = existingHashValue.ToString();
             if (!string.IsNullOrEmpty(existingHash) && existingHash != newHash)
             {
-                await _db.KeyDeleteAsync(LookupKey(existingHash));
+                await _cache.KeyDeleteAsync(LookupKey(existingHash));
             }
         }
 
         var sessionRef = $"{userId}:{sessionId}";
 
-        await _db.StringSetAsync((RedisKey)tokenKey, (RedisValue)newHash, expiry, false, When.Always, CommandFlags.None);
-        await _db.StringSetAsync((RedisKey)LookupKey(newHash), (RedisValue)sessionRef, expiry, false, When.Always, CommandFlags.None);
-        await _db.SetAddAsync((RedisKey)UserSessionsKey(userId), (RedisValue)sessionId.ToString(), CommandFlags.None);
-        await _db.KeyExpireAsync((RedisKey)UserSessionsKey(userId), expiry, CommandFlags.None);
+        await _cache.StringSetAsync((RedisKey)tokenKey, (RedisValue)newHash, expiry, false, When.Always, CommandFlags.None);
+        await _cache.StringSetAsync((RedisKey)LookupKey(newHash), (RedisValue)sessionRef, expiry, false, When.Always, CommandFlags.None);
+        await _cache.SetAddAsync((RedisKey)UserSessionsKey(userId), (RedisValue)sessionId.ToString(), CommandFlags.None);
+        await _cache.KeyExpireAsync((RedisKey)UserSessionsKey(userId), expiry, CommandFlags.None);
     }
 
     public async Task<RefreshTokenInfo?> FindByTokenAsync(
@@ -71,7 +71,7 @@ public class RefreshTokenProvider(IConnectionMultiplexer redis) : IRefreshTokenP
         if (string.IsNullOrEmpty(refreshToken)) return null;
 
         var tokenHash = HashToken(refreshToken);
-        var sessionRefValue = await _db.StringGetAsync(LookupKey(tokenHash));
+        var sessionRefValue = await _cache.StringGetAsync(LookupKey(tokenHash));
 
         if (!sessionRefValue.HasValue) return null;
 
@@ -84,7 +84,7 @@ public class RefreshTokenProvider(IConnectionMultiplexer redis) : IRefreshTokenP
             return null;
         }
 
-        var storedHashValue = await _db.StringGetAsync(TokenKey(userId, sessionId));
+        var storedHashValue = await _cache.StringGetAsync(TokenKey(userId, sessionId));
         if (!storedHashValue.HasValue || storedHashValue.ToString() != tokenHash)
         {
             return null;
@@ -99,20 +99,20 @@ public class RefreshTokenProvider(IConnectionMultiplexer redis) : IRefreshTokenP
         CancellationToken cancellationToken = default)
     {
         var tokenKey = TokenKey(userId, sessionId);
-        var existingHashValue = await _db.StringGetAsync(tokenKey);
+        var existingHashValue = await _cache.StringGetAsync(tokenKey);
 
-        await _db.KeyDeleteAsync(tokenKey);
+        await _cache.KeyDeleteAsync(tokenKey);
 
         if (existingHashValue.HasValue)
         {
             var existingHash = existingHashValue.ToString();
             if (!string.IsNullOrEmpty(existingHash))
             {
-                await _db.KeyDeleteAsync(LookupKey(existingHash));
+                await _cache.KeyDeleteAsync(LookupKey(existingHash));
             }
         }
 
-        await _db.SetRemoveAsync(UserSessionsKey(userId), sessionId.ToString());
+        await _cache.SetRemoveAsync(UserSessionsKey(userId), sessionId.ToString());
     }
 
     public async Task RevokeAllSessionsAsync(
@@ -120,7 +120,7 @@ public class RefreshTokenProvider(IConnectionMultiplexer redis) : IRefreshTokenP
         CancellationToken cancellationToken = default)
     {
         var sessionsKey = UserSessionsKey(userId);
-        var sessionIds = await _db.SetMembersAsync(sessionsKey);
+        var sessionIds = await _cache.SetMembersAsync(sessionsKey);
 
         foreach (var sessionIdValue in sessionIds)
         {
@@ -130,6 +130,6 @@ public class RefreshTokenProvider(IConnectionMultiplexer redis) : IRefreshTokenP
             }
         }
 
-        await _db.KeyDeleteAsync(sessionsKey);
+        await _cache.KeyDeleteAsync(sessionsKey);
     }
 }

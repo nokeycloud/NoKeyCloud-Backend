@@ -60,7 +60,7 @@ public static class DependencyInjection
                         if (string.IsNullOrEmpty(jti)) return;
 
                         var revocation = context.HttpContext.RequestServices
-                            .GetRequiredService<IJwtRevocationService>();
+                            .GetRequiredService<IJwtProvider>();
 
                         if (await revocation.IsRevokedAsync(jti, context.HttpContext.RequestAborted))
                         {

@@ -15,8 +15,7 @@ public class RefreshSessionHandlerTests
     private const string NewToken = "new-refresh-token";
     private const string JwtToken = "new-jwt-token";
 
-    private readonly Mock<IJwtService> _jwtServiceMock;
-    private readonly Mock<IRefreshTokenProvider> _refreshTokenProviderMock;
+    private readonly Mock<IAuthService>  _authServiceMock;
     private readonly Mock<IUserRepository> _userRepositoryMock;
     private readonly RefreshSessionHandler _handler;
     
@@ -29,13 +28,11 @@ public class RefreshSessionHandlerTests
 
     public RefreshSessionHandlerTests()
     {
-        _jwtServiceMock = new Mock<IJwtService>();
-        _refreshTokenProviderMock = new Mock<IRefreshTokenProvider>();
+        _authServiceMock = new Mock<IAuthService>{DefaultValue = DefaultValue.Mock};
         _userRepositoryMock = new Mock<IUserRepository>();
 
         _handler = new RefreshSessionHandler(
-            _jwtServiceMock.Object,
-            _refreshTokenProviderMock.Object,
+            _authServiceMock.Object,
             _userRepositoryMock.Object,
             Options.Create(DefaultJwtOptions));
     }
@@ -56,20 +53,20 @@ public class RefreshSessionHandlerTests
         var uid = userId ?? Guid.NewGuid();
         var sid = sessionId ?? Guid.NewGuid();
 
-        _refreshTokenProviderMock
-            .Setup(p => p.FindByTokenAsync(OldToken, It.IsAny<CancellationToken>()))
+        _authServiceMock
+            .Setup(p => p.RefreshTokens.FindByTokenAsync(OldToken, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new RefreshTokenInfo(uid, sid));
-        _refreshTokenProviderMock
-            .Setup(p => p.GenerateRefreshToken())
+        _authServiceMock
+            .Setup(p => p.RefreshTokens.GenerateRefreshToken())
             .Returns(NewToken);
-        _refreshTokenProviderMock
-            .Setup(p => p.StoreRefreshTokenAsync(uid, sid, NewToken, It.IsAny<TimeSpan>(), It.IsAny<CancellationToken>()))
+        _authServiceMock
+            .Setup(p => p.RefreshTokens.StoreRefreshTokenAsync(uid, sid, NewToken, It.IsAny<TimeSpan>(), It.IsAny<CancellationToken>()))
             .Returns(Task.CompletedTask);
         _userRepositoryMock
             .Setup(r => r.GetUserByUserId(uid, It.IsAny<CancellationToken>()))
             .ReturnsAsync(CreateFakeUser(uid, isAdmin));
-        _jwtServiceMock
-            .Setup(j => j.JwtTokenService(uid, isAdmin, sid))
+        _authServiceMock
+            .Setup(j => j.Jwt.JwtTokenService(uid, isAdmin, sid))
             .ReturnsAsync(JwtToken);
     }
 
@@ -93,11 +90,11 @@ public class RefreshSessionHandlerTests
 
         await _handler.Handle(new RefreshSessionCommand(OldToken), CancellationToken.None);
 
-        _refreshTokenProviderMock.Verify(
-            p => p.StoreRefreshTokenAsync(userId, sessionId, NewToken, TimeSpan.FromHours(24), It.IsAny<CancellationToken>()),
+        _authServiceMock.Verify(
+            p => p.RefreshTokens.StoreRefreshTokenAsync(userId, sessionId, NewToken, TimeSpan.FromHours(24), It.IsAny<CancellationToken>()),
             Times.Once);
-        _refreshTokenProviderMock.Verify(
-            p => p.RevokeSessionAsync(It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<CancellationToken>()),
+        _authServiceMock.Verify(
+            p => p.RefreshTokens.RevokeSessionAsync(It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<CancellationToken>()),
             Times.Never);
     }
 
@@ -110,22 +107,22 @@ public class RefreshSessionHandlerTests
 
         await _handler.Handle(new RefreshSessionCommand(OldToken), CancellationToken.None);
 
-        _jwtServiceMock.Verify(j => j.JwtTokenService(userId, It.IsAny<bool>(), sessionId), Times.Once);
+        _authServiceMock.Verify(j => j.Jwt.JwtTokenService(userId, It.IsAny<bool>(), sessionId), Times.Once);
     }
 
     [Fact]
     public async Task Handle_WhenTokenNotFound_ShouldReturnFailure()
     {
-        _refreshTokenProviderMock
-            .Setup(p => p.FindByTokenAsync(OldToken, It.IsAny<CancellationToken>()))
+        _authServiceMock
+            .Setup(p => p.RefreshTokens.FindByTokenAsync(OldToken, It.IsAny<CancellationToken>()))
             .ReturnsAsync((RefreshTokenInfo?)null);
 
         var result = await _handler.Handle(new RefreshSessionCommand(OldToken), CancellationToken.None);
 
         Assert.False(result.IsSuccess);
         Assert.Equal("Invalid or expired refresh token.", result.Error);
-        _refreshTokenProviderMock.Verify(
-            p => p.StoreRefreshTokenAsync(
+        _authServiceMock.Verify(
+            p => p.RefreshTokens.StoreRefreshTokenAsync(
                 It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<string>(), It.IsAny<TimeSpan>(), It.IsAny<CancellationToken>()),
             Times.Never);
     }
@@ -135,19 +132,19 @@ public class RefreshSessionHandlerTests
     {
         var userId = Guid.NewGuid();
         var sessionId = Guid.NewGuid();
-        _refreshTokenProviderMock
-            .Setup(p => p.FindByTokenAsync(OldToken, It.IsAny<CancellationToken>()))
+        _authServiceMock
+            .Setup(p => p.RefreshTokens.FindByTokenAsync(OldToken, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new RefreshTokenInfo(userId, sessionId));
-        _refreshTokenProviderMock
-            .Setup(p => p.GenerateRefreshToken())
+        _authServiceMock
+            .Setup(p => p.RefreshTokens.GenerateRefreshToken())
             .Returns(string.Empty);
 
         var result = await _handler.Handle(new RefreshSessionCommand(OldToken), CancellationToken.None);
 
         Assert.False(result.IsSuccess);
         Assert.Equal("Failed to generate a new refresh token.", result.Error);
-        _refreshTokenProviderMock.Verify(
-            p => p.StoreRefreshTokenAsync(
+        _authServiceMock.Verify(
+            p => p.RefreshTokens.StoreRefreshTokenAsync(
                 It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<string>(), It.IsAny<TimeSpan>(), It.IsAny<CancellationToken>()),
             Times.Never);
     }
@@ -157,14 +154,14 @@ public class RefreshSessionHandlerTests
     {
         var userId = Guid.NewGuid();
         var sessionId = Guid.NewGuid();
-        _refreshTokenProviderMock
-            .Setup(p => p.FindByTokenAsync(OldToken, It.IsAny<CancellationToken>()))
+        _authServiceMock
+            .Setup(p => p.RefreshTokens.FindByTokenAsync(OldToken, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new RefreshTokenInfo(userId, sessionId));
-        _refreshTokenProviderMock
-            .Setup(p => p.GenerateRefreshToken())
+        _authServiceMock
+            .Setup(p => p.RefreshTokens.GenerateRefreshToken())
             .Returns(NewToken);
-        _refreshTokenProviderMock
-            .Setup(p => p.StoreRefreshTokenAsync(userId, sessionId, NewToken, It.IsAny<TimeSpan>(), It.IsAny<CancellationToken>()))
+        _authServiceMock
+            .Setup(p => p.RefreshTokens.StoreRefreshTokenAsync(userId, sessionId, NewToken, It.IsAny<TimeSpan>(), It.IsAny<CancellationToken>()))
             .Returns(Task.CompletedTask);
         _userRepositoryMock
             .Setup(r => r.GetUserByUserId(userId, It.IsAny<CancellationToken>()))
@@ -182,8 +179,8 @@ public class RefreshSessionHandlerTests
         var userId = Guid.NewGuid();
         var sessionId = Guid.NewGuid();
         SetupHappyPath(userId, sessionId);
-        _jwtServiceMock
-            .Setup(j => j.JwtTokenService(userId, false, sessionId))
+        _authServiceMock
+            .Setup(j => j.Jwt.JwtTokenService(userId, false, sessionId))
             .ReturnsAsync(string.Empty);
 
         var result = await _handler.Handle(new RefreshSessionCommand(OldToken), CancellationToken.None);
@@ -201,7 +198,7 @@ public class RefreshSessionHandlerTests
 
         await _handler.Handle(new RefreshSessionCommand(OldToken), CancellationToken.None);
 
-        _jwtServiceMock.Verify(j => j.JwtTokenService(userId, true, sessionId), Times.Once);
+        _authServiceMock.Verify(j => j.Jwt.JwtTokenService(userId, true, sessionId), Times.Once);
     }
 
     [Fact]
@@ -213,8 +210,7 @@ public class RefreshSessionHandlerTests
 
         const int configuredHours = 6;
         var handler = new RefreshSessionHandler(
-            _jwtServiceMock.Object,
-            _refreshTokenProviderMock.Object,
+            _authServiceMock.Object,
             _userRepositoryMock.Object,
             Options.Create(new JwtOptions
             {
@@ -225,8 +221,8 @@ public class RefreshSessionHandlerTests
 
         await handler.Handle(new RefreshSessionCommand(OldToken), CancellationToken.None);
 
-        _refreshTokenProviderMock.Verify(
-            p => p.StoreRefreshTokenAsync(
+        _authServiceMock.Verify(
+            p => p.RefreshTokens.StoreRefreshTokenAsync(
                 userId, sessionId, NewToken, TimeSpan.FromHours(configuredHours), It.IsAny<CancellationToken>()),
             Times.Once);
     }

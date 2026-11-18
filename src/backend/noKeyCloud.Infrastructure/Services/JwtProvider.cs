@@ -5,14 +5,20 @@ using System.Security.Claims;
 using System.Text;
 using Microsoft.Extensions.Options;
 using noKeyCloud.Application.Configuration;
+using StackExchange.Redis;
 
 namespace noKeyCloud.Infrastructure.Services;
 
-public class JwtService(IOptions<JwtOptions> jwtOptions) : IJwtService
+public class JwtProvider(IConnectionMultiplexer redis, IOptions<JwtOptions> jwtOptions) : IJwtProvider
 
 {
     public const string SessionIdClaimType = "sid";
     private readonly JwtOptions _options = jwtOptions.Value;
+    
+    private const string KeyPrefix = "jwt-denylist:";
+    private readonly IDatabase _cache = redis.GetDatabase();
+    private readonly TimeSpan _maxTtl = TimeSpan.FromMinutes(jwtOptions.Value.AccessTokenLifetimeMinutes);
+    
     public Task<string> JwtTokenService(Guid? id, bool isAdmin, Guid sessionId)
     {
         var secretKeyString = _options.SecretKey;
@@ -47,5 +53,27 @@ public class JwtService(IOptions<JwtOptions> jwtOptions) : IJwtService
         );
 
         return Task.FromResult(new JwtSecurityTokenHandler().WriteToken(token));
+    }
+    
+    public async Task RevokeAsync(string jti, TimeSpan ttl, CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(jti)) return;
+
+        cancellationToken.ThrowIfCancellationRequested();
+
+        var effectiveTtl = ttl > _maxTtl ? _maxTtl : ttl;
+        if (effectiveTtl <= TimeSpan.Zero) return;
+ 
+        await _cache.StringSetAsync($"{KeyPrefix}{jti}", "1", effectiveTtl);
+        await _cache.StringSetAsync($"{KeyPrefix}{jti}", "1", effectiveTtl, false, When.Always, CommandFlags.None);
+    }
+
+    public async Task<bool> IsRevokedAsync(string jti, CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(jti)) return false;
+
+        cancellationToken.ThrowIfCancellationRequested();
+
+        return await _cache.KeyExistsAsync($"{KeyPrefix}{jti}");
     }
 }
