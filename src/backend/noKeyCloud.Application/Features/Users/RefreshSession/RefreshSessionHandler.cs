@@ -8,38 +8,44 @@ using noKeyCloud.Contracts.Common;
 
 namespace noKeyCloud.Application.Features.Users.RefreshSession;
 
-public class RefreshSessionHandler(IJwtService jwtService, IRefreshTokenProvider refreshTokenProvider, IUserRepository userRepository, IOptions<JwtOptions> jwtOptions)
+public class RefreshSessionHandler(IAuthService authService, IUserRepository userRepository, IOptions<JwtOptions> jwtOptions)
     : IRequestHandler<RefreshSessionCommand, Result<RefreshSessionResult>>
 {
     private readonly JwtOptions _options = jwtOptions.Value;
     public async Task<Result<RefreshSessionResult>> Handle(RefreshSessionCommand request, CancellationToken cancellationToken)
     {
-        var userId = await refreshTokenProvider.GetUserIdByRefreshTokenAsync(request.RefreshToken, cancellationToken);
+        var tokenInfo = await authService.RefreshTokens.FindByTokenAsync(request.RefreshToken, cancellationToken);
 
-        if (userId == null)
+        if (tokenInfo == null)
         {
             return Result<RefreshSessionResult>.Failure("Invalid or expired refresh token.");
         }
 
-        var storedToken = await refreshTokenProvider.GetRefreshTokenAsync(userId.Value, cancellationToken);
+        var userId = tokenInfo.UserId;
+        var sessionId = tokenInfo.SessionId;
 
-        if (string.IsNullOrEmpty(storedToken) || storedToken != request.RefreshToken)
-        {
-            return Result<RefreshSessionResult>.Failure("Invalid or expired refresh token.");
-        }
-
-        var newRefreshToken = refreshTokenProvider.GenerateRefreshToken();
+        var newRefreshToken = authService.RefreshTokens.GenerateRefreshToken();
 
         if (string.IsNullOrEmpty(newRefreshToken))
         {
             return Result<RefreshSessionResult>.Failure("Failed to generate a new refresh token.");
         }
-        await refreshTokenProvider.RevokeRefreshTokenAsync(request.RefreshToken, cancellationToken);
+        
+        await authService.RefreshTokens.StoreRefreshTokenAsync(
+            userId,
+            sessionId,
+            newRefreshToken,
+            TimeSpan.FromHours(_options.RefreshTokenLifetimeHours),
+            cancellationToken);
 
-        await refreshTokenProvider.StoreRefreshTokenAsync(userId.Value, newRefreshToken, TimeSpan.FromHours(_options.RefreshTokenLifetimeHours), cancellationToken);
+        var user = await userRepository.GetUserByUserId(userId, cancellationToken);
 
-        var user = await userRepository.GetUserByUserId(userId.Value, cancellationToken);
-        var newJwt = await jwtService.JwtTokenService(userId.Value, user!.IsAdmin);
+        if (user == null)
+        {
+            return Result<RefreshSessionResult>.Failure("User not found.");
+        }
+
+        var newJwt = await authService.Jwt.JwtTokenService(userId, user.IsAdmin, sessionId);
 
         if (string.IsNullOrEmpty(newJwt))
         {

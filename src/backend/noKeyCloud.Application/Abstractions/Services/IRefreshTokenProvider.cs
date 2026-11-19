@@ -1,11 +1,12 @@
-﻿namespace noKeyCloud.Application.Abstractions.Services;
+﻿using noKeyCloud.Application.Security.Models;
+
+namespace noKeyCloud.Application.Abstractions.Services;
 
 public interface IRefreshTokenProvider
 {
-    Task StoreRefreshTokenAsync(Guid userId, string refreshToken, TimeSpan expiry, CancellationToken cancellationToken = default);
-    Task<string?> GetRefreshTokenAsync(Guid userId, CancellationToken cancellationToken = default);
-    Task<Guid?> GetUserIdByRefreshTokenAsync(string refreshToken, CancellationToken cancellationToken = default);
-    Task InvalidateRefreshTokenAsync(Guid userId, CancellationToken cancellationToken = default);
-    Task RevokeRefreshTokenAsync(string refreshToken, CancellationToken cancellationToken = default);
     string GenerateRefreshToken();
+    Task StoreRefreshTokenAsync(Guid userId, Guid sessionId, string refreshToken, TimeSpan expiry, CancellationToken cancellationToken = default);
+    Task<RefreshTokenInfo?> FindByTokenAsync(string refreshToken, CancellationToken cancellationToken = default);
+    Task RevokeSessionAsync(Guid userId, Guid sessionId, CancellationToken cancellationToken = default);
+    Task RevokeAllSessionsAsync(Guid userId, CancellationToken cancellationToken = default);
 }

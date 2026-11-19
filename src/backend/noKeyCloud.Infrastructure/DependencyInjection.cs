@@ -43,7 +43,7 @@ public static class DependencyInjection
 
         services.AddScoped<IUserRepository, UserRepository>();
 
-        services.AddScoped<IJwtService, JwtService>();
+        services.AddScoped<IJwtProvider, JwtProvider>();
 
         services.AddScoped<IFileRepository, FileRepository>();
 
@@ -58,6 +58,8 @@ public static class DependencyInjection
         services.AddSingleton<IOpaqueSessionStore, OpaqueSessionStoreProvider>();
         
         services.Configure<JwtOptions>(config.GetSection(JwtOptions.SectionName));
+        
+        services.AddScoped<IAuthService, AuthService>();
 
 
         var postgreUrl = Environment.GetEnvironmentVariable("DB_HOST");
