@@ -6,7 +6,7 @@ using noKeyCloud.Contracts.Common;
 
 namespace noKeyCloud.Application.Features.Users.RemoveUser;
 
-public class RemoveUserCommandHandler(IUserRepository userRepository, IAuthService authService)
+public class RemoveUserCommandHandler(IUserRepository userRepository, IAuthService authService, IUnitOfWork unitOfWork)
     : IRequestHandler<RemoveUserCommand, Result<RemoveUserResponse>>
 {
     public async Task<Result<RemoveUserResponse>> Handle(RemoveUserCommand request, CancellationToken cancellationToken)
@@ -16,9 +16,15 @@ public class RemoveUserCommandHandler(IUserRepository userRepository, IAuthServi
         
         if (user == null) return Result<RemoveUserResponse>.Failure("User not found");
 
-        var result = await userRepository.RemoveUserByUser(user, cancellationToken);
-        
-        if (!result.IsSuccess) return Result<RemoveUserResponse>.Failure(result.Error);
+        try
+        {
+            userRepository.RemoveUserByUser(user);
+            await unitOfWork.SaveChangesAsync(cancellationToken);
+        }
+        catch (Exception e)
+        {
+            return Result<RemoveUserResponse>.Failure(e.Message);
+        }
 
         await authService.RefreshTokens.RevokeAllSessionsAsync(userId, cancellationToken);
         

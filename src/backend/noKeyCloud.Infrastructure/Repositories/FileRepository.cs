@@ -49,7 +49,6 @@ public class FileRepository : IFileRepository
                 await System.IO.File.WriteAllBytesAsync(fullPath, fileContent ?? Array.Empty<byte>(), cancellationToken);
 
                 await _context.Files.AddAsync(file, cancellationToken);
-                await _context.SaveChangesAsync(cancellationToken);
             }
         }
         catch (Exception ex)
@@ -98,8 +97,6 @@ public class FileRepository : IFileRepository
         if(file == null) return  false;
         
         file.SoftDelete();
-        
-        await _context.SaveChangesAsync(cancellationToken);
         
         return true;
     }

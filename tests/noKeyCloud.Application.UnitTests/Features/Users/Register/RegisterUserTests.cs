@@ -18,6 +18,9 @@ public class RegisterUserTests
     private readonly Mock<IFolderRepository> _folderRepositoryMock;
     private readonly Mock<IRegisterInviteRepository> _registerInviteRepositoryMock;
     private readonly Mock<IRecoveryMethodRepository> _recoveryMethodRepositoryMock;
+    private readonly Mock<IOpaqueCredentialRepository> _opaqueCredentialRepositoryMock;
+    private readonly Mock<IMasterKeyWrapRepository> _masterKeyWrapRepositoryMock;
+    private readonly Mock<IUnitOfWork> _unitOfWorkMock;
     private readonly RegisterUserHandler _handler;
 
     public RegisterUserTests()
@@ -26,12 +29,18 @@ public class RegisterUserTests
         _folderRepositoryMock = new Mock<IFolderRepository>();
         _registerInviteRepositoryMock = new Mock<IRegisterInviteRepository>();
         _recoveryMethodRepositoryMock = new Mock<IRecoveryMethodRepository>();
+        _opaqueCredentialRepositoryMock = new Mock<IOpaqueCredentialRepository>();
+        _masterKeyWrapRepositoryMock = new Mock<IMasterKeyWrapRepository>();
+        _unitOfWorkMock = new Mock<IUnitOfWork>();
 
         _handler = new RegisterUserHandler(
             _userRepositoryMock.Object,
             _folderRepositoryMock.Object,
             _registerInviteRepositoryMock.Object,
-            _recoveryMethodRepositoryMock.Object);
+            _recoveryMethodRepositoryMock.Object,
+            _opaqueCredentialRepositoryMock.Object,
+            _masterKeyWrapRepositoryMock.Object,
+            _unitOfWorkMock.Object);
     }
 
     private static RegisterUserCommand BuildCommand(
@@ -57,43 +66,23 @@ public class RegisterUserTests
         _userRepositoryMock
             .Setup(r => r.UserExistsAsync(It.IsAny<string>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(false);
-        _userRepositoryMock
-            .Setup(r => r.CreateUser(It.IsAny<User>()))
-            .Returns(Task.CompletedTask);
-        _folderRepositoryMock
-            .Setup(r => r.AddFolder(It.IsAny<Folder>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync((Folder f, CancellationToken _) => f);
-        _recoveryMethodRepositoryMock
-            .Setup(r => r.CreateRecoveryMethod(It.IsAny<RecoveryMethod>(), It.IsAny<CancellationToken>()))
-            .Returns(Task.CompletedTask);
     }
 
     [Fact]
     public async Task Handle_FirstUser_ShouldRegisterAsAdmin()
     {
         User? capturedUser = null;
-        _userRepositoryMock
-            .Setup(r => r.HasAnyUsersAsync(It.IsAny<CancellationToken>()))
-            .ReturnsAsync(false);
-        _userRepositoryMock
-            .Setup(r => r.UserExistsAsync(It.IsAny<string>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(false);
+        SetupFirstUserPersist();
         _userRepositoryMock
             .Setup(r => r.CreateUser(It.IsAny<User>()))
-            .Callback<User>(u => capturedUser = u)
-            .Returns(Task.CompletedTask);
-        _folderRepositoryMock
-            .Setup(r => r.AddFolder(It.IsAny<Folder>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync((Folder f, CancellationToken _) => f);
-        _recoveryMethodRepositoryMock
-            .Setup(r => r.CreateRecoveryMethod(It.IsAny<RecoveryMethod>(), It.IsAny<CancellationToken>()))
-            .Returns(Task.CompletedTask);
+            .Callback<User>(u => capturedUser = u);
 
         var result = await _handler.Handle(BuildCommand(), CancellationToken.None);
 
         Assert.True(result.IsSuccess);
         Assert.NotNull(capturedUser);
         Assert.True(capturedUser!.IsAdmin);
+        _unitOfWorkMock.Verify(u => u.SaveChangesAsync(It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Fact]
@@ -102,23 +91,13 @@ public class RegisterUserTests
         User? capturedUser = null;
         Folder? capturedFolder = null;
 
-        _userRepositoryMock
-            .Setup(r => r.HasAnyUsersAsync(It.IsAny<CancellationToken>()))
-            .ReturnsAsync(false);
-        _userRepositoryMock
-            .Setup(r => r.UserExistsAsync(It.IsAny<string>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(false);
+        SetupFirstUserPersist();
         _userRepositoryMock
             .Setup(r => r.CreateUser(It.IsAny<User>()))
-            .Callback<User>(u => capturedUser = u)
-            .Returns(Task.CompletedTask);
+            .Callback<User>(u => capturedUser = u);
         _folderRepositoryMock
-            .Setup(r => r.AddFolder(It.IsAny<Folder>(), It.IsAny<CancellationToken>()))
-            .Callback<Folder, CancellationToken>((f, _) => capturedFolder = f)
-            .ReturnsAsync((Folder f, CancellationToken _) => f);
-        _recoveryMethodRepositoryMock
-            .Setup(r => r.CreateRecoveryMethod(It.IsAny<RecoveryMethod>(), It.IsAny<CancellationToken>()))
-            .Returns(Task.CompletedTask);
+            .Setup(r => r.Add(It.IsAny<Folder>()))
+            .Callback<Folder>(f => capturedFolder = f);
 
         var result = await _handler.Handle(BuildCommand(), CancellationToken.None);
 
@@ -131,6 +110,7 @@ public class RegisterUserTests
         Assert.Equal(capturedUser.Id, capturedFolder.UserId);
         Assert.Null(capturedFolder.ParentFolderId);
         Assert.Equal(RootFolderKey, capturedFolder.EncryptedKey);
+        _unitOfWorkMock.Verify(u => u.SaveChangesAsync(It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Fact]
@@ -139,23 +119,13 @@ public class RegisterUserTests
         User? capturedUser = null;
         RecoveryMethod? capturedRecovery = null;
 
-        _userRepositoryMock
-            .Setup(r => r.HasAnyUsersAsync(It.IsAny<CancellationToken>()))
-            .ReturnsAsync(false);
-        _userRepositoryMock
-            .Setup(r => r.UserExistsAsync(It.IsAny<string>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(false);
+        SetupFirstUserPersist();
         _userRepositoryMock
             .Setup(r => r.CreateUser(It.IsAny<User>()))
-            .Callback<User>(u => capturedUser = u)
-            .Returns(Task.CompletedTask);
-        _folderRepositoryMock
-            .Setup(r => r.AddFolder(It.IsAny<Folder>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync((Folder f, CancellationToken _) => f);
+            .Callback<User>(u => capturedUser = u);
         _recoveryMethodRepositoryMock
-            .Setup(r => r.CreateRecoveryMethod(It.IsAny<RecoveryMethod>(), It.IsAny<CancellationToken>()))
-            .Callback<RecoveryMethod, CancellationToken>((rm, _) => capturedRecovery = rm)
-            .Returns(Task.CompletedTask);
+            .Setup(r => r.Add(It.IsAny<RecoveryMethod>()))
+            .Callback<RecoveryMethod>(rm => capturedRecovery = rm);
 
         var result = await _handler.Handle(BuildCommand(), CancellationToken.None);
 
@@ -166,35 +136,43 @@ public class RegisterUserTests
         Assert.Equal(RecoveryMethodType.Secret_Recovery, capturedRecovery.RecoveryMethodType);
         Assert.Equal(RecoveryEncryptedMasterKey, capturedRecovery.EncryptedRecoveryData);
         Assert.True(capturedRecovery.IsActive);
+        _unitOfWorkMock.Verify(u => u.SaveChangesAsync(It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Fact]
-    public async Task Handle_FirstUser_ShouldPersistEncryptedMasterKeyAndSalt()
+    public async Task Handle_FirstUser_ShouldPersistOpaqueCredentialAndMasterKeyWrap()
     {
         User? capturedUser = null;
-        _userRepositoryMock
-            .Setup(r => r.HasAnyUsersAsync(It.IsAny<CancellationToken>()))
-            .ReturnsAsync(false);
-        _userRepositoryMock
-            .Setup(r => r.UserExistsAsync(It.IsAny<string>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(false);
+        OpaqueCredential? capturedCredential = null;
+        MasterKeyWrap? capturedWrap = null;
+
+        SetupFirstUserPersist();
         _userRepositoryMock
             .Setup(r => r.CreateUser(It.IsAny<User>()))
-            .Callback<User>(u => capturedUser = u)
-            .Returns(Task.CompletedTask);
-        _folderRepositoryMock
-            .Setup(r => r.AddFolder(It.IsAny<Folder>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync((Folder f, CancellationToken _) => f);
-        _recoveryMethodRepositoryMock
-            .Setup(r => r.CreateRecoveryMethod(It.IsAny<RecoveryMethod>(), It.IsAny<CancellationToken>()))
-            .Returns(Task.CompletedTask);
+            .Callback<User>(u => capturedUser = u);
+        _opaqueCredentialRepositoryMock
+            .Setup(r => r.Add(It.IsAny<OpaqueCredential>()))
+            .Callback<OpaqueCredential>(c => capturedCredential = c);
+        _masterKeyWrapRepositoryMock
+            .Setup(r => r.Add(It.IsAny<MasterKeyWrap>()))
+            .Callback<MasterKeyWrap>(w => capturedWrap = w);
 
-        await _handler.Handle(BuildCommand(), CancellationToken.None);
+        var result = await _handler.Handle(BuildCommand(), CancellationToken.None);
 
+        Assert.True(result.IsSuccess);
         Assert.NotNull(capturedUser);
-        Assert.Equal(EncryptedMasterKey, capturedUser!.EncryptedMasterKey);
-        Assert.Equal(KeySalt, capturedUser.KeySalt);
-        Assert.Equal("opaque-record", capturedUser.RegistrationRecord);
+
+        Assert.NotNull(capturedCredential);
+        Assert.Equal(capturedUser!.Id, capturedCredential!.UserId);
+        Assert.Equal("opaque-record", capturedCredential.RegistrationRecord);
+
+        Assert.NotNull(capturedWrap);
+        Assert.Equal(capturedUser.Id, capturedWrap!.UserId);
+        Assert.Equal(MasterKeyWrapType.OpaquePassword, capturedWrap.Type);
+        Assert.Equal(EncryptedMasterKey, capturedWrap.WrappedMasterKey);
+        Assert.Equal(KeySalt, capturedWrap.Salt);
+        Assert.NotNull(capturedWrap.Argon2idParams);
+        _unitOfWorkMock.Verify(u => u.SaveChangesAsync(It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Fact]
@@ -209,6 +187,7 @@ public class RegisterUserTests
         Assert.False(result.IsSuccess);
         Assert.Equal("An invite code is required to register.", result.Error);
         _userRepositoryMock.Verify(r => r.CreateUser(It.IsAny<User>()), Times.Never);
+        _unitOfWorkMock.Verify(u => u.SaveChangesAsync(It.IsAny<CancellationToken>()), Times.Never);
     }
 
     [Fact]
@@ -222,6 +201,7 @@ public class RegisterUserTests
 
         Assert.False(result.IsSuccess);
         Assert.Equal("An invite code is required to register.", result.Error);
+        _unitOfWorkMock.Verify(u => u.SaveChangesAsync(It.IsAny<CancellationToken>()), Times.Never);
     }
 
     [Fact]
@@ -238,6 +218,7 @@ public class RegisterUserTests
 
         Assert.False(result.IsSuccess);
         Assert.Equal("Invalid, expired, or already used invite code.", result.Error);
+        _unitOfWorkMock.Verify(u => u.SaveChangesAsync(It.IsAny<CancellationToken>()), Times.Never);
     }
 
     [Fact]
@@ -259,6 +240,7 @@ public class RegisterUserTests
 
         Assert.False(result.IsSuccess);
         Assert.Equal("Invalid, expired, or already used invite code.", result.Error);
+        _unitOfWorkMock.Verify(u => u.SaveChangesAsync(It.IsAny<CancellationToken>()), Times.Never);
     }
 
     [Fact]
@@ -279,6 +261,7 @@ public class RegisterUserTests
 
         Assert.False(result.IsSuccess);
         Assert.Equal("Invalid, expired, or already used invite code.", result.Error);
+        _unitOfWorkMock.Verify(u => u.SaveChangesAsync(It.IsAny<CancellationToken>()), Times.Never);
     }
 
     [Fact]
@@ -290,15 +273,6 @@ public class RegisterUserTests
         _userRepositoryMock
             .Setup(r => r.UserExistsAsync(It.IsAny<string>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(false);
-        _userRepositoryMock
-            .Setup(r => r.CreateUser(It.IsAny<User>()))
-            .Returns(Task.CompletedTask);
-        _folderRepositoryMock
-            .Setup(r => r.AddFolder(It.IsAny<Folder>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync((Folder f, CancellationToken _) => f);
-        _recoveryMethodRepositoryMock
-            .Setup(r => r.CreateRecoveryMethod(It.IsAny<RecoveryMethod>(), It.IsAny<CancellationToken>()))
-            .Returns(Task.CompletedTask);
 
         var validInvite = new RegisterInvite(
             Guid.NewGuid(), "valid-code", DateTime.UtcNow, DateTime.UtcNow.AddHours(24));
@@ -306,16 +280,13 @@ public class RegisterUserTests
         _registerInviteRepositoryMock
             .Setup(r => r.GetByCodeAsync("valid-code", It.IsAny<CancellationToken>()))
             .ReturnsAsync(validInvite);
-        _registerInviteRepositoryMock
-            .Setup(r => r.UpdateAsync(validInvite, It.IsAny<CancellationToken>()))
-            .Returns(Task.CompletedTask);
 
         var result = await _handler.Handle(BuildCommand(inviteCode: "valid-code"), CancellationToken.None);
 
         Assert.True(result.IsSuccess);
         Assert.True(validInvite.IsUsed);
-        _registerInviteRepositoryMock.Verify(
-            r => r.UpdateAsync(validInvite, It.IsAny<CancellationToken>()), Times.Once);
+        _registerInviteRepositoryMock.Verify(r => r.Update(validInvite), Times.Once);
+        _unitOfWorkMock.Verify(u => u.SaveChangesAsync(It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Fact]
@@ -331,14 +302,7 @@ public class RegisterUserTests
         User? capturedUser = null;
         _userRepositoryMock
             .Setup(r => r.CreateUser(It.IsAny<User>()))
-            .Callback<User>(u => capturedUser = u)
-            .Returns(Task.CompletedTask);
-        _folderRepositoryMock
-            .Setup(r => r.AddFolder(It.IsAny<Folder>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync((Folder f, CancellationToken _) => f);
-        _recoveryMethodRepositoryMock
-            .Setup(r => r.CreateRecoveryMethod(It.IsAny<RecoveryMethod>(), It.IsAny<CancellationToken>()))
-            .Returns(Task.CompletedTask);
+            .Callback<User>(u => capturedUser = u);
 
         var validInvite = new RegisterInvite(
             Guid.NewGuid(), "valid-code", DateTime.UtcNow, DateTime.UtcNow.AddHours(24));
@@ -346,9 +310,6 @@ public class RegisterUserTests
         _registerInviteRepositoryMock
             .Setup(r => r.GetByCodeAsync("valid-code", It.IsAny<CancellationToken>()))
             .ReturnsAsync(validInvite);
-        _registerInviteRepositoryMock
-            .Setup(r => r.UpdateAsync(validInvite, It.IsAny<CancellationToken>()))
-            .Returns(Task.CompletedTask);
 
         await _handler.Handle(BuildCommand(inviteCode: "valid-code"), CancellationToken.None);
 
@@ -369,8 +330,8 @@ public class RegisterUserTests
         await _handler.Handle(BuildCommand(inviteCode: "missing"), CancellationToken.None);
 
         _userRepositoryMock.Verify(r => r.CreateUser(It.IsAny<User>()), Times.Never);
-        _folderRepositoryMock.Verify(
-            r => r.AddFolder(It.IsAny<Folder>(), It.IsAny<CancellationToken>()), Times.Never);
+        _folderRepositoryMock.Verify(r => r.Add(It.IsAny<Folder>()), Times.Never);
+        _unitOfWorkMock.Verify(u => u.SaveChangesAsync(It.IsAny<CancellationToken>()), Times.Never);
     }
 
     [Fact]
@@ -388,28 +349,17 @@ public class RegisterUserTests
         Assert.False(result.IsSuccess);
         Assert.Equal("User with the same username or email already exists.", result.Error);
         _userRepositoryMock.Verify(r => r.CreateUser(It.IsAny<User>()), Times.Never);
+        _unitOfWorkMock.Verify(u => u.SaveChangesAsync(It.IsAny<CancellationToken>()), Times.Never);
     }
 
     [Fact]
     public async Task Handle_ShouldNormalizeUsernameAndEmailToLowercase()
     {
         User? capturedUser = null;
-        _userRepositoryMock
-            .Setup(r => r.HasAnyUsersAsync(It.IsAny<CancellationToken>()))
-            .ReturnsAsync(false);
-        _userRepositoryMock
-            .Setup(r => r.UserExistsAsync(It.IsAny<string>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(false);
+        SetupFirstUserPersist();
         _userRepositoryMock
             .Setup(r => r.CreateUser(It.IsAny<User>()))
-            .Callback<User>(u => capturedUser = u)
-            .Returns(Task.CompletedTask);
-        _folderRepositoryMock
-            .Setup(r => r.AddFolder(It.IsAny<Folder>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync((Folder f, CancellationToken _) => f);
-        _recoveryMethodRepositoryMock
-            .Setup(r => r.CreateRecoveryMethod(It.IsAny<RecoveryMethod>(), It.IsAny<CancellationToken>()))
-            .Returns(Task.CompletedTask);
+            .Callback<User>(u => capturedUser = u);
 
         var result = await _handler.Handle(
             BuildCommand(username: "  MiXeDCaSe  ", email: "  MiXeD@Test.COM  "),
@@ -425,22 +375,10 @@ public class RegisterUserTests
     public async Task Handle_WhenEmailIsWhitespace_ShouldPersistNullEmail()
     {
         User? capturedUser = null;
-        _userRepositoryMock
-            .Setup(r => r.HasAnyUsersAsync(It.IsAny<CancellationToken>()))
-            .ReturnsAsync(false);
-        _userRepositoryMock
-            .Setup(r => r.UserExistsAsync(It.IsAny<string>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(false);
+        SetupFirstUserPersist();
         _userRepositoryMock
             .Setup(r => r.CreateUser(It.IsAny<User>()))
-            .Callback<User>(u => capturedUser = u)
-            .Returns(Task.CompletedTask);
-        _folderRepositoryMock
-            .Setup(r => r.AddFolder(It.IsAny<Folder>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync((Folder f, CancellationToken _) => f);
-        _recoveryMethodRepositoryMock
-            .Setup(r => r.CreateRecoveryMethod(It.IsAny<RecoveryMethod>(), It.IsAny<CancellationToken>()))
-            .Returns(Task.CompletedTask);
+            .Callback<User>(u => capturedUser = u);
 
         await _handler.Handle(BuildCommand(email: "   "), CancellationToken.None);
 
@@ -453,22 +391,10 @@ public class RegisterUserTests
     {
         var identifier = Guid.NewGuid();
         User? capturedUser = null;
-        _userRepositoryMock
-            .Setup(r => r.HasAnyUsersAsync(It.IsAny<CancellationToken>()))
-            .ReturnsAsync(false);
-        _userRepositoryMock
-            .Setup(r => r.UserExistsAsync(It.IsAny<string>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(false);
+        SetupFirstUserPersist();
         _userRepositoryMock
             .Setup(r => r.CreateUser(It.IsAny<User>()))
-            .Callback<User>(u => capturedUser = u)
-            .Returns(Task.CompletedTask);
-        _folderRepositoryMock
-            .Setup(r => r.AddFolder(It.IsAny<Folder>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync((Folder f, CancellationToken _) => f);
-        _recoveryMethodRepositoryMock
-            .Setup(r => r.CreateRecoveryMethod(It.IsAny<RecoveryMethod>(), It.IsAny<CancellationToken>()))
-            .Returns(Task.CompletedTask);
+            .Callback<User>(u => capturedUser = u);
 
         var command = new RegisterUserCommand(
             identifier,
@@ -488,16 +414,11 @@ public class RegisterUserTests
     }
 
     [Fact]
-    public async Task Handle_WhenCreateUserThrows_ShouldReturnFailureWithMessage()
+    public async Task Handle_WhenSaveChangesThrows_ShouldReturnFailureWithMessage()
     {
-        _userRepositoryMock
-            .Setup(r => r.HasAnyUsersAsync(It.IsAny<CancellationToken>()))
-            .ReturnsAsync(false);
-        _userRepositoryMock
-            .Setup(r => r.UserExistsAsync(It.IsAny<string>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(false);
-        _userRepositoryMock
-            .Setup(r => r.CreateUser(It.IsAny<User>()))
+        SetupFirstUserPersist();
+        _unitOfWorkMock
+            .Setup(u => u.SaveChangesAsync(It.IsAny<CancellationToken>()))
             .ThrowsAsync(new Exception("DB constraint violation"));
 
         var result = await _handler.Handle(BuildCommand(), CancellationToken.None);

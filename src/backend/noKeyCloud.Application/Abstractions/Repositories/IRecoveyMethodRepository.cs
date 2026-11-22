@@ -4,5 +4,5 @@ namespace noKeyCloud.Application.Abstractions.Repositories;
 
 public interface IRecoveryMethodRepository
 {
-    Task CreateRecoveryMethod(RecoveryMethod recoveryMethod, CancellationToken cancellationToken = default);
+    void Add(RecoveryMethod recoveryMethod);
 }

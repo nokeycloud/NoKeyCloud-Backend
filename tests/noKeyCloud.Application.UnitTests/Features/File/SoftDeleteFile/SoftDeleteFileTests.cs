@@ -1,38 +1,23 @@
 ﻿using Moq;
 using noKeyCloud.Application.Abstractions.Repositories;
-using noKeyCloud.Application.Features.Files.CreateFile;
 using noKeyCloud.Application.Features.Files.SoftDeleteFile;
-using noKeyCloud.Domain.Entities;
-
 
 namespace noKeyCloud.Application.UnitTests.Features.File.SoftDeleteFile;
 
 public class SoftDeleteFileTests
 {
     private readonly Mock<IFileRepository> _fileRepositoryMock;
+    private readonly Mock<IUnitOfWork> _unitOfWorkMock;
     private readonly SoftDeleteFileHandler _handler;
 
     public SoftDeleteFileTests()
     {
         _fileRepositoryMock = new Mock<IFileRepository>();
+        _unitOfWorkMock = new Mock<IUnitOfWork>();
 
         _handler = new SoftDeleteFileHandler(
-            _fileRepositoryMock.Object);
-    }
-    
-    private static Domain.Entities.File CreateFakeFile(Guid userId, Guid fileId)
-    {
-        var now = DateTime.UtcNow;
-        return new Domain.Entities.File(
-            id: fileId,
-            encryptedName: [1],
-            mimeType: "text/plain",
-            sizeBytes: 12341,
-            storagePath: "path/to/file",
-            encryptedKey: [2],
-            checksum: [1],
-            parentFolderId: Guid.NewGuid(),
-            userId: userId);
+            _fileRepositoryMock.Object,
+            _unitOfWorkMock.Object);
     }
 
     [Fact]
@@ -40,7 +25,6 @@ public class SoftDeleteFileTests
     {
         var userId = Guid.NewGuid();
         var fileId = Guid.NewGuid();
-        var file = CreateFakeFile(userId, fileId);
         
         _fileRepositoryMock
             .Setup(r => r.SoftDeleteFileById(
@@ -56,6 +40,7 @@ public class SoftDeleteFileTests
         var result = await _handler.Handle(command, CancellationToken.None);
         
         Assert.True(result.IsSuccess);
+        _unitOfWorkMock.Verify(u => u.SaveChangesAsync(It.IsAny<CancellationToken>()), Times.Once);
     }
     
     [Fact]
@@ -63,7 +48,6 @@ public class SoftDeleteFileTests
     {
         var userId = Guid.NewGuid();
         var fileId = Guid.NewGuid();
-        var file = CreateFakeFile(userId, fileId);
         
         _fileRepositoryMock
             .Setup(r => r.SoftDeleteFileById(
@@ -80,5 +64,6 @@ public class SoftDeleteFileTests
         
         Assert.False(result.IsSuccess);
         Assert.Equal("Could not find file", result.Error);
+        _unitOfWorkMock.Verify(u => u.SaveChangesAsync(It.IsAny<CancellationToken>()), Times.Never);
     }
 }

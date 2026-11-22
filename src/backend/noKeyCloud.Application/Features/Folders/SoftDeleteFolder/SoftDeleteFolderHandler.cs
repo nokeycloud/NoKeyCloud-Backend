@@ -5,7 +5,7 @@ using noKeyCloud.Contracts.Folders;
 
 namespace noKeyCloud.Application.Features.Folders.SoftDeleteFolder;
 
-public class SoftDeleteFolderHandler(IFolderRepository folderRepository) : IRequestHandler<SoftDeleteFolderCommand, Result<SoftDeleteFolderResponse>>
+public class SoftDeleteFolderHandler(IFolderRepository folderRepository, IUnitOfWork unitOfWork) : IRequestHandler<SoftDeleteFolderCommand, Result<SoftDeleteFolderResponse>>
 {
     public async Task<Result<SoftDeleteFolderResponse>> Handle(SoftDeleteFolderCommand request, CancellationToken cancellationToken)
     {
@@ -18,6 +18,8 @@ public class SoftDeleteFolderHandler(IFolderRepository folderRepository) : IRequ
         response = await folderRepository.SoftDeleteFoldersById(foldersId ,request.userId, cancellationToken);
         
         if (!response.Item1) return Result<SoftDeleteFolderResponse>.Failure(response.Item2);
+        
+        await unitOfWork.SaveChangesAsync(cancellationToken);
     
         var answer = new SoftDeleteFolderResponse();
 

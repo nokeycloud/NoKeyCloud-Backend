@@ -43,9 +43,6 @@ public class RefreshSessionHandlerTests
             userIdentifier: Guid.NewGuid(),
             email: "test@test.com",
             username: "test",
-            registrationRecord: "record",
-            encryptedMasterKey: [1],
-            keySalt: [2],
             isAdmin: isAdmin);
 
     private void SetupHappyPath(Guid? userId = null, Guid? sessionId = null, bool isAdmin = false)

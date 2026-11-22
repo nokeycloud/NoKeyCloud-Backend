@@ -13,8 +13,10 @@ public class LoginInitTests
     private const string StartLoginRequest = "client-start-login-request";
     private const string ServerLoginState = "server-login-state";
     private const string LoginResponse = "server-login-response";
+    private const string RegistrationRecord = "registration-record";
 
     private readonly Mock<IUserRepository> _userRepositoryMock;
+    private readonly Mock<IOpaqueCredentialRepository> _opaqueCredentialRepositoryMock;
     private readonly Mock<IOpaqueServerSetupProvider> _serverSetupProviderMock;
     private readonly Mock<IAuthService> _authServiceMock;
     private readonly LoginInitCommandHandler _handler;
@@ -22,13 +24,15 @@ public class LoginInitTests
     public LoginInitTests()
     {
         _userRepositoryMock = new Mock<IUserRepository>();
+        _opaqueCredentialRepositoryMock = new Mock<IOpaqueCredentialRepository>();
         _serverSetupProviderMock = new Mock<IOpaqueServerSetupProvider>();
-        _authServiceMock = new Mock<IAuthService>{DefaultValue = DefaultValue.Mock};
+        _authServiceMock = new Mock<IAuthService> { DefaultValue = DefaultValue.Mock };
 
         _handler = new LoginInitCommandHandler(
             _userRepositoryMock.Object,
             _serverSetupProviderMock.Object,
-            _authServiceMock.Object);
+            _authServiceMock.Object,
+            _opaqueCredentialRepositoryMock.Object);
     }
 
     private static User CreateFakeUser(Guid id) =>
@@ -36,13 +40,22 @@ public class LoginInitTests
             id: id,
             userIdentifier: Guid.NewGuid(),
             email: "test@email.com",
-            username: "testuser",
-            registrationRecord: "registration-record",
-            encryptedMasterKey: [1],
-            keySalt: [2]);
+            username: "testuser");
 
-    private void SetupOpaqueSuccess(User user)
+    private static OpaqueCredential CreateFakeOpaqueCredential(Guid userId) =>
+        new(
+            id: Guid.NewGuid(),
+            userId: userId,
+            registrationRecord: RegistrationRecord);
+
+    private OpaqueCredential SetupOpaqueSuccess(User user)
     {
+        var credential = CreateFakeOpaqueCredential(user.Id);
+
+        _opaqueCredentialRepositoryMock
+            .Setup(r => r.GetByUserIdAsync(user.Id, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(credential);
+
         _serverSetupProviderMock
             .Setup(p => p.GetServerSetupAsync(It.IsAny<CancellationToken>()))
             .ReturnsAsync(ServerSetup);
@@ -52,8 +65,10 @@ public class LoginInitTests
                 ServerSetup,
                 StartLoginRequest,
                 user.UserIdentifier.ToString(),
-                user.RegistrationRecord))
+                credential.RegistrationRecord))
             .Returns(new OpaqueServerStartLoginResult(ServerLoginState, LoginResponse));
+
+        return credential;
     }
 
     [Fact]
@@ -70,8 +85,33 @@ public class LoginInitTests
         Assert.False(result.IsSuccess);
         Assert.Equal("Invalid credentials.", result.Error);
         Assert.Null(result.Value);
+        _opaqueCredentialRepositoryMock.Verify(
+            r => r.GetByUserIdAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()), Times.Never);
         _serverSetupProviderMock.Verify(
             p => p.GetServerSetupAsync(It.IsAny<CancellationToken>()), Times.Never);
+        _authServiceMock.Verify(
+            s => s.Opaque.ServerStartLogin(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>()),
+            Times.Never);
+    }
+
+    [Fact]
+    public async Task Handle_WhenOpaqueCredentialNotFound_ShouldReturnFailureAndSkipOpaque()
+    {
+        var user = CreateFakeUser(Guid.NewGuid());
+        _userRepositoryMock
+            .Setup(r => r.GetUserByUsernameOrEmailAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(user);
+        _opaqueCredentialRepositoryMock
+            .Setup(r => r.GetByUserIdAsync(user.Id, It.IsAny<CancellationToken>()))
+            .ReturnsAsync((OpaqueCredential?)null);
+
+        var command = new LoginInitCommand("testuser", "test@email.com", StartLoginRequest);
+
+        var result = await _handler.Handle(command, CancellationToken.None);
+
+        Assert.False(result.IsSuccess);
+        Assert.False(string.IsNullOrWhiteSpace(result.Error));
+        Assert.Null(result.Value);
         _authServiceMock.Verify(
             s => s.Opaque.ServerStartLogin(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>()),
             Times.Never);
@@ -185,7 +225,7 @@ public class LoginInitTests
         _userRepositoryMock
             .Setup(r => r.GetUserByUsernameOrEmailAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(user);
-        SetupOpaqueSuccess(user);
+        var credential = SetupOpaqueSuccess(user);
 
         var command = new LoginInitCommand("testuser", "test@email.com", StartLoginRequest);
 
@@ -196,7 +236,7 @@ public class LoginInitTests
                 ServerSetup,
                 StartLoginRequest,
                 user.UserIdentifier.ToString(),
-                user.RegistrationRecord),
+                credential.RegistrationRecord),
             Times.Once);
     }
 
@@ -207,6 +247,9 @@ public class LoginInitTests
         _userRepositoryMock
             .Setup(r => r.GetUserByUsernameOrEmailAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(user);
+        _opaqueCredentialRepositoryMock
+            .Setup(r => r.GetByUserIdAsync(user.Id, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(CreateFakeOpaqueCredential(user.Id));
         _serverSetupProviderMock
             .Setup(p => p.GetServerSetupAsync(It.IsAny<CancellationToken>()))
             .ReturnsAsync(ServerSetup);
@@ -232,6 +275,9 @@ public class LoginInitTests
         _userRepositoryMock
             .Setup(r => r.GetUserByUsernameOrEmailAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(user);
+        _opaqueCredentialRepositoryMock
+            .Setup(r => r.GetByUserIdAsync(user.Id, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(CreateFakeOpaqueCredential(user.Id));
         _serverSetupProviderMock
             .Setup(p => p.GetServerSetupAsync(It.IsAny<CancellationToken>()))
             .ThrowsAsync(new InvalidOperationException("Setup missing"));

@@ -11,6 +11,7 @@ public class CreateFileTests
     private readonly Mock<IFileRepository> _fileRepositoryMock;
     private readonly Mock<IUserRepository> _userRepositoryMock;
     private readonly Mock<IFolderRepository> _folderRepositoryMock;
+    private readonly Mock<IUnitOfWork> _unitOfWorkMock;
     private readonly CreateFileHandler _handler;
 
     public CreateFileTests()
@@ -18,11 +19,13 @@ public class CreateFileTests
         _fileRepositoryMock = new Mock<IFileRepository>();
         _userRepositoryMock = new Mock<IUserRepository>();
         _folderRepositoryMock = new Mock<IFolderRepository>();
+        _unitOfWorkMock = new Mock<IUnitOfWork>();
 
         _handler = new CreateFileHandler(
             _fileRepositoryMock.Object,
             _userRepositoryMock.Object,
-            _folderRepositoryMock.Object);
+            _folderRepositoryMock.Object,
+            _unitOfWorkMock.Object);
     }
 
     private static User CreateFakeUser(Guid id) =>
@@ -30,10 +33,7 @@ public class CreateFileTests
             id: id,
             userIdentifier: Guid.NewGuid(),
             email: "test@email.com",
-            username: "testuser",
-            registrationRecord: "reg-record",
-            encryptedMasterKey: [1, 2, 3],
-            keySalt: [4, 5, 6]);
+            username: "testuser");
 
     private static Folder CreateFakeFolder(Guid userId, Guid folderId)
     {
@@ -82,6 +82,7 @@ public class CreateFileTests
         Assert.True(result.IsSuccess);
         Assert.NotNull(result.Value);
         Assert.NotEqual(Guid.Empty, result.Value.FileId);
+        _unitOfWorkMock.Verify(u => u.SaveChangesAsync(It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Fact]
@@ -125,6 +126,7 @@ public class CreateFileTests
         Assert.Equal(folderId, captured.ParentFolderId);
         Assert.Equal(userId, captured.UserId);
         Assert.Equal(0L, captured.SizeBytes);
+        _unitOfWorkMock.Verify(u => u.SaveChangesAsync(It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Fact]
@@ -151,6 +153,7 @@ public class CreateFileTests
         _fileRepositoryMock.Verify(
             r => r.CreateFile(It.IsAny<DomainFile>(), It.IsAny<CancellationToken>(), It.IsAny<byte[]>()),
             Times.Never);
+        _unitOfWorkMock.Verify(u => u.SaveChangesAsync(It.IsAny<CancellationToken>()), Times.Never);
     }
 
     [Fact]
@@ -174,6 +177,7 @@ public class CreateFileTests
         
         Assert.False(result.IsSuccess);
         Assert.Equal("User not found", result.Error);
+        _unitOfWorkMock.Verify(u => u.SaveChangesAsync(It.IsAny<CancellationToken>()), Times.Never);
     }
 
     [Fact]
@@ -191,6 +195,7 @@ public class CreateFileTests
             r => r.GetUserByUserId(It.IsAny<Guid>(), It.IsAny<CancellationToken>()), Times.Never);
         _folderRepositoryMock.Verify(
             r => r.GetFolderByFolderId(It.IsAny<Guid>(), It.IsAny<CancellationToken>()), Times.Never);
+        _unitOfWorkMock.Verify(u => u.SaveChangesAsync(It.IsAny<CancellationToken>()), Times.Never);
     }
 
     [Fact]
@@ -218,5 +223,6 @@ public class CreateFileTests
         
         Assert.False(result.IsSuccess);
         Assert.Equal("Storage failure", result.Error);
+        _unitOfWorkMock.Verify(u => u.SaveChangesAsync(It.IsAny<CancellationToken>()), Times.Never);
     }
 }

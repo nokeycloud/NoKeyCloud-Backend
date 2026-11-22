@@ -1,7 +1,6 @@
 ﻿
 using Microsoft.EntityFrameworkCore;
 using noKeyCloud.Application.Abstractions.Repositories;
-using noKeyCloud.Contracts.Common;
 using noKeyCloud.Domain.Entities;
 
 namespace noKeyCloud.Infrastructure.Repositories;
@@ -15,10 +14,9 @@ public class UserRepository : IUserRepository
         _context = context;
     }
     
-    public async Task CreateUser(User user)
+    public void CreateUser(User user)
     {
-        await _context.Users.AddAsync(user);
-        await _context.SaveChangesAsync();
+        _context.Users.Add(user);
     }
 
     public async Task<User?> GetUserByUsernameOrEmailAsync(string identifier, CancellationToken cancellationToken)
@@ -43,21 +41,9 @@ public class UserRepository : IUserRepository
             cancellationToken);
     }
     
-    public async Task<Result> RemoveUserByUser(User user, CancellationToken cancellationToken)
+    public void RemoveUserByUser(User user)
     {
-        try
-        {
-            _context.Users.Remove(user);
-
-            await _context.SaveChangesAsync(cancellationToken);
-
-            return Result.Success();
-        }
-        catch (Exception e)
-        {
-            return Result.Failure(e.Message);
-        }
-    
+        _context.Users.Remove(user);
     }
     
     public async Task<bool> HasAnyUsersAsync(CancellationToken cancellationToken = default)
@@ -74,9 +60,8 @@ public class UserRepository : IUserRepository
         return await _context.Users.AnyAsync(u => u.Username == username || u.Email == email, cancellationToken);
     }
     
-    public async Task UpdateUserAsync(User user, CancellationToken cancellationToken = default)
+    public void UpdateUser(User user)
     {
         _context.Users.Update(user);
-        await _context.SaveChangesAsync(cancellationToken);
     }
 }

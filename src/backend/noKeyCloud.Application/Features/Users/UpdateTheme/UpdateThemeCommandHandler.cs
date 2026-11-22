@@ -4,7 +4,7 @@ using noKeyCloud.Contracts.Common;
 
 namespace noKeyCloud.Application.Features.Users.UpdateTheme;
 
-public class UpdateThemeCommandHandler(IUserRepository userRepository) : IRequestHandler<UpdateThemeCommand, Result>
+public class UpdateThemeCommandHandler(IUserRepository userRepository, IUnitOfWork unitOfWork) : IRequestHandler<UpdateThemeCommand, Result>
 {
     public async Task<Result> Handle(UpdateThemeCommand request, CancellationToken cancellationToken)
     {
@@ -12,7 +12,8 @@ public class UpdateThemeCommandHandler(IUserRepository userRepository) : IReques
         if (user == null) return Result.Failure("User not found.");
 
         user.UpdateTheme(request.Theme);
-        await userRepository.UpdateUserAsync(user, cancellationToken);
+        userRepository.UpdateUser(user);
+        await unitOfWork.SaveChangesAsync(cancellationToken);
         
         return Result.Success();
     }
