@@ -2,7 +2,6 @@
 using noKeyCloud.Application.Abstractions.Repositories;
 using noKeyCloud.Application.Abstractions.Services;
 using noKeyCloud.Application.Features.Users.RemoveUser;
-using noKeyCloud.Contracts.Common;
 using noKeyCloud.Domain.Entities;
 
 namespace noKeyCloud.Application.UnitTests.Features.Users.RemoveUser;
@@ -13,16 +12,19 @@ public class RemoveUserTests
 
     private readonly Mock<IUserRepository> _userRepositoryMock;
     private readonly Mock<IAuthService> _authServiceMock;
+    private readonly Mock<IUnitOfWork> _unitOfWorkMock;
     private readonly RemoveUserCommandHandler _handler;
 
     public RemoveUserTests()
     {
         _userRepositoryMock = new Mock<IUserRepository>();
-        _authServiceMock = new Mock<IAuthService>{DefaultValue = DefaultValue.Mock};
+        _authServiceMock = new Mock<IAuthService> { DefaultValue = DefaultValue.Mock };
+        _unitOfWorkMock = new Mock<IUnitOfWork>();
 
         _handler = new RemoveUserCommandHandler(
             _userRepositoryMock.Object,
-            _authServiceMock.Object);
+            _authServiceMock.Object,
+            _unitOfWorkMock.Object);
     }
 
     private static User CreateFakeUser(Guid id) =>
@@ -30,10 +32,7 @@ public class RemoveUserTests
             id: id,
             userIdentifier: Guid.NewGuid(),
             email: "test@email.com",
-            username: "test_user",
-            registrationRecord: "record",
-            encryptedMasterKey: [1],
-            keySalt: [2]);
+            username: "test_user");
 
     [Fact]
     public async Task Handle_WhenUserDoesNotExist_ShouldReturnFailure()
@@ -59,8 +58,8 @@ public class RemoveUserTests
 
         await _handler.Handle(command, Ct);
 
-        _userRepositoryMock.Verify(
-            x => x.RemoveUserByUser(It.IsAny<User>(), It.IsAny<CancellationToken>()), Times.Never);
+        _userRepositoryMock.Verify(x => x.RemoveUserByUser(It.IsAny<User>()), Times.Never);
+        _unitOfWorkMock.Verify(u => u.SaveChangesAsync(It.IsAny<CancellationToken>()), Times.Never);
     }
 
     [Fact]
@@ -86,14 +85,13 @@ public class RemoveUserTests
         _userRepositoryMock
             .Setup(x => x.GetUserByUserId(userId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(user);
-        _userRepositoryMock
-            .Setup(x => x.RemoveUserByUser(user, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(Result.Success());
 
         var result = await _handler.Handle(new RemoveUserCommand(userId), Ct);
 
         Assert.True(result.IsSuccess);
         Assert.Equal("User successfully removed", result.Value!.Message);
+        _userRepositoryMock.Verify(x => x.RemoveUserByUser(user), Times.Once);
+        _unitOfWorkMock.Verify(u => u.SaveChangesAsync(Ct), Times.Once);
     }
 
     [Fact]
@@ -104,9 +102,6 @@ public class RemoveUserTests
         _userRepositoryMock
             .Setup(x => x.GetUserByUserId(userId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(user);
-        _userRepositoryMock
-            .Setup(x => x.RemoveUserByUser(user, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(Result.Success());
 
         await _handler.Handle(new RemoveUserCommand(userId), Ct);
 
@@ -116,16 +111,16 @@ public class RemoveUserTests
     }
 
     [Fact]
-    public async Task Handle_WhenRepositoryRemovalFails_ShouldReturnFailure()
+    public async Task Handle_WhenSaveChangesFails_ShouldReturnFailure()
     {
         var userId = Guid.NewGuid();
         var user = CreateFakeUser(userId);
         _userRepositoryMock
             .Setup(x => x.GetUserByUserId(userId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(user);
-        _userRepositoryMock
-            .Setup(x => x.RemoveUserByUser(user, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(Result.Failure("FK constraint"));
+        _unitOfWorkMock
+            .Setup(u => u.SaveChangesAsync(It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new Exception("FK constraint"));
 
         var result = await _handler.Handle(new RemoveUserCommand(userId), Ct);
 
@@ -134,16 +129,16 @@ public class RemoveUserTests
     }
 
     [Fact]
-    public async Task Handle_WhenRepositoryRemovalFails_ShouldNotRevokeSessions()
+    public async Task Handle_WhenSaveChangesFails_ShouldNotRevokeSessions()
     {
         var userId = Guid.NewGuid();
         var user = CreateFakeUser(userId);
         _userRepositoryMock
             .Setup(x => x.GetUserByUserId(userId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(user);
-        _userRepositoryMock
-            .Setup(x => x.RemoveUserByUser(user, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(Result.Failure("FK constraint"));
+        _unitOfWorkMock
+            .Setup(u => u.SaveChangesAsync(It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new Exception("FK constraint"));
 
         await _handler.Handle(new RemoveUserCommand(userId), Ct);
 
@@ -160,9 +155,6 @@ public class RemoveUserTests
         _userRepositoryMock
             .Setup(x => x.GetUserByUserId(userId, Ct))
             .ReturnsAsync(user);
-        _userRepositoryMock
-            .Setup(x => x.RemoveUserByUser(user, Ct))
-            .ReturnsAsync(Result.Success());
         _authServiceMock
             .Setup(x => x.RefreshTokens.RevokeAllSessionsAsync(userId, Ct))
             .Returns(Task.CompletedTask);
@@ -170,7 +162,8 @@ public class RemoveUserTests
         await _handler.Handle(new RemoveUserCommand(userId), Ct);
 
         _userRepositoryMock.Verify(x => x.GetUserByUserId(userId, Ct), Times.Once);
-        _userRepositoryMock.Verify(x => x.RemoveUserByUser(user, Ct), Times.Once);
+        _userRepositoryMock.Verify(x => x.RemoveUserByUser(user), Times.Once);
+        _unitOfWorkMock.Verify(u => u.SaveChangesAsync(Ct), Times.Once);
         _authServiceMock.Verify(x => x.RefreshTokens.RevokeAllSessionsAsync(userId, Ct), Times.Once);
     }
 }

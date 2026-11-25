@@ -7,7 +7,7 @@ using File = noKeyCloud.Domain.Entities.File;
 
 namespace noKeyCloud.Application.Features.Files.UploadFile;
 
-public class UploadFileHandler(IFileRepository fileRepository, IUserRepository userRepository, IFolderRepository folderRepository)
+public class UploadFileHandler(IFileRepository fileRepository, IUserRepository userRepository, IFolderRepository folderRepository, IUnitOfWork unitOfWork)
     : IRequestHandler<UploadFileCommand, Result<UploadFileResponse>>
 {
     public async Task<Result<UploadFileResponse>> Handle(UploadFileCommand request, CancellationToken cancellationToken)
@@ -41,6 +41,7 @@ public class UploadFileHandler(IFileRepository fileRepository, IUserRepository u
             file.InitAdditionalData(folder, user);
 
             await fileRepository.CreateFile(file, cancellationToken, request.FileContent);
+            await unitOfWork.SaveChangesAsync(cancellationToken);
         }
         catch (Exception e)
         {

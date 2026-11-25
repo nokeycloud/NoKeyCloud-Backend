@@ -12,10 +12,9 @@ public class RecoveryMethodRepository : IRecoveryMethodRepository
         _context = context;
     }
     
-    public async Task CreateRecoveryMethod(RecoveryMethod recoveryMethod, CancellationToken cancellationToken = default)
+    public void Add(RecoveryMethod recoveryMethod)
     {
-        await _context.RecoveryMethods.AddAsync(recoveryMethod, cancellationToken);
-        await _context.SaveChangesAsync(cancellationToken);
+        _context.RecoveryMethods.Add(recoveryMethod);
     }
     
 }

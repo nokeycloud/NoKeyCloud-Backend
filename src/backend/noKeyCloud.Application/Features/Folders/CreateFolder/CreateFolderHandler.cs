@@ -6,7 +6,7 @@ using System.Text;
 
 namespace noKeyCloud.Application.Features.Folders.CreateFolder;
 
-public class CreateFolderHandler(IFolderRepository folderRepository)
+public class CreateFolderHandler(IFolderRepository folderRepository, IUnitOfWork unitOfWork)
     : IRequestHandler<CreateFolderCommand, CreateFolderResponse>
 {
     public async Task<CreateFolderResponse> Handle(CreateFolderCommand request, CancellationToken cancellationToken)
@@ -40,8 +40,9 @@ public class CreateFolderHandler(IFolderRepository folderRepository)
         );
 
 
-        var createdFolder = await folderRepository.AddFolder(folder, cancellationToken);
+        folderRepository.Add(folder);
+        await unitOfWork.SaveChangesAsync(cancellationToken);
 
-        return new CreateFolderResponse(createdFolder.Id);
+        return new CreateFolderResponse(folder.Id);
     }
 }

@@ -7,13 +7,17 @@ namespace noKeyCloud.Application.UnitTests.Features.Folders.SoftDeleteFolder;
 public class SoftDeleteFolderTests
 {
     private readonly Mock<IFolderRepository> _folderRepositoryMock;
+    private readonly Mock<IUnitOfWork> _unitOfWorkMock;
     private readonly SoftDeleteFolderHandler _handler;
 
     public SoftDeleteFolderTests()
     {
         _folderRepositoryMock = new Mock<IFolderRepository>();
+        _unitOfWorkMock = new Mock<IUnitOfWork>();
 
-        _handler = new SoftDeleteFolderHandler(_folderRepositoryMock.Object);
+        _handler = new SoftDeleteFolderHandler(
+            _folderRepositoryMock.Object,
+            _unitOfWorkMock.Object);
     }
 
     [Fact]
@@ -98,6 +102,8 @@ public class SoftDeleteFolderTests
                 userId,
                 It.IsAny<CancellationToken>()),
             Times.Never);
+
+        _unitOfWorkMock.Verify(u => u.SaveChangesAsync(It.IsAny<CancellationToken>()), Times.Never);
     }
     
     [Fact]
@@ -137,6 +143,8 @@ public class SoftDeleteFolderTests
                 userId,
                 It.IsAny<CancellationToken>()),
             Times.Never);
+
+        _unitOfWorkMock.Verify(u => u.SaveChangesAsync(It.IsAny<CancellationToken>()), Times.Never);
     }
     
     [Fact]
@@ -183,5 +191,7 @@ public class SoftDeleteFolderTests
                 userId,
                 It.IsAny<CancellationToken>()),
             Times.Once);
+
+        _unitOfWorkMock.Verify(u => u.SaveChangesAsync(It.IsAny<CancellationToken>()), Times.Never);
     }
 }

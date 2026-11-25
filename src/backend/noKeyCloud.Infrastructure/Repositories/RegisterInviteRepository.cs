@@ -6,10 +6,9 @@ namespace noKeyCloud.Infrastructure.Repositories;
 
 public class RegisterInviteRepository(DataContext context) : IRegisterInviteRepository
 {
-    public async Task AddAsync(RegisterInvite invite, CancellationToken cancellationToken = default)
+    public void Add(RegisterInvite invite)
     {
-        await context.RegisterInvites.AddAsync(invite, cancellationToken);
-        await context.SaveChangesAsync(cancellationToken);
+        context.RegisterInvites.Add(invite);
     }
 
     public async Task<RegisterInvite?> GetByCodeAsync(string code, CancellationToken cancellationToken = default)
@@ -18,10 +17,9 @@ public class RegisterInviteRepository(DataContext context) : IRegisterInviteRepo
             .SingleOrDefaultAsync(i => i.Code == code, cancellationToken);
     }
 
-    public async Task UpdateAsync(RegisterInvite invite, CancellationToken cancellationToken = default)
+    public void Update(RegisterInvite invite)
     {
         context.RegisterInvites.Update(invite);
-        await context.SaveChangesAsync(cancellationToken);
     }
     
     public async Task<IEnumerable<RegisterInvite>> GetActiveInvitesAsync(CancellationToken cancellationToken = default)
@@ -36,9 +34,8 @@ public class RegisterInviteRepository(DataContext context) : IRegisterInviteRepo
         return await context.RegisterInvites.FindAsync(new object[] { id }, cancellationToken);
     }
 
-    public async Task DeleteAsync(RegisterInvite invite, CancellationToken cancellationToken = default)
+    public void Delete(RegisterInvite invite)
     {
         context.RegisterInvites.Remove(invite);
-        await context.SaveChangesAsync(cancellationToken);
     }
 }

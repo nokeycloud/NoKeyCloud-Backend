@@ -32,13 +32,11 @@ public class FolderRepository : IFolderRepository
         return (folder.Files.ToList(), folder.SubFolders.ToList());
     }
 
-    public async Task<Folder> AddFolder(Folder folder, CancellationToken cancellationToken = default)
+    public void Add(Folder folder)
     {
-        await _context.Folders.AddAsync(folder, cancellationToken);
-        await _context.SaveChangesAsync(cancellationToken);
-
-        return folder;
+        _context.Folders.Add(folder);
     }
+    
     public async Task<Folder> GetUserHomeFolder(Guid UserId, CancellationToken cancellationToken)
     {
         var folder = await _context.Folders
@@ -63,8 +61,6 @@ public class FolderRepository : IFolderRepository
         if (folders.Count != foldersId.Count) return (false, "Not all folders were found");
         
         foreach (var folder in folders) folder.SoftDelete();
-
-        await _context.SaveChangesAsync(cancellationToken);
         
         return (true,"Folders successfully deleted");
             

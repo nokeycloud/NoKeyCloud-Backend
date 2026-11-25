@@ -1,36 +1,16 @@
-﻿
-
-using noKeyCloud.Contracts.Common;
-
-namespace noKeyCloud.Domain.Entities;
+﻿namespace noKeyCloud.Domain.Entities;
 
 public class User
 {
-    //
-    
     public Guid Id { get; private set; }
-    
     public Guid UserIdentifier { get; private set; }
-    
     public string? Email { get; private set; }
-    
     public string Username { get; private set; }
-    
     public bool IsActive { get; private set; }
-    
-    public DateTime CreatedAt { get; private set; }
-    
-    public DateTime UpdatedAt { get; private set; }
-    
-    public string RegistrationRecord { get; private set; }
-    
-    public byte[] EncryptedMasterKey { get; private set; }
-    
-    public byte[] KeySalt { get; private set; }
-    
     public bool IsAdmin { get; private set; }
-    
     public string Theme { get; private set; } = "dark";
+    public DateTime CreatedAt { get; private set; }
+    public DateTime UpdatedAt { get; private set; }
     
     //Navigation
     
@@ -58,21 +38,32 @@ public class User
     private readonly List<SecurityEvent> _securityEvents = new();
     public IReadOnlyCollection<SecurityEvent> SecurityEvents => _securityEvents.AsReadOnly();
     
+    public OpaqueCredential? OpaqueCredential { get; private set; }
+    
+    private readonly List<WebAuthnCredential> _webAuthnCredentials = new();
+    public IReadOnlyCollection<WebAuthnCredential> WebAuthnCredentials => _webAuthnCredentials.AsReadOnly();
+
+    private readonly List<ExternalLogin> _externalLogins = new();
+    public IReadOnlyCollection<ExternalLogin> ExternalLogins => _externalLogins.AsReadOnly();
+
+    private readonly List<ApiKey> _apiKeys = new();
+    public IReadOnlyCollection<ApiKey> ApiKeys => _apiKeys.AsReadOnly();
+    
+    private readonly List<MasterKeyWrap> _masterKeyWraps = new();
+    public IReadOnlyCollection<MasterKeyWrap> MasterKeyWraps => _masterKeyWraps.AsReadOnly();
+    
     //Validation
 
-    public User(Guid id, Guid userIdentifier,string? email, string username, string registrationRecord, byte[] encryptedMasterKey, byte[] keySalt, bool isAdmin = false)
+    public User(Guid id, Guid userIdentifier,string? email, string username, bool isAdmin = false)
     {
         Id = id;
         UserIdentifier = userIdentifier;
         Email = email;
         Username = username;
         IsActive = true;
-        RegistrationRecord = registrationRecord;
-        EncryptedMasterKey = encryptedMasterKey;
-        KeySalt = keySalt;
+        IsAdmin = isAdmin;
         CreatedAt = DateTime.UtcNow;
         UpdatedAt = CreatedAt;
-        IsAdmin = isAdmin;
     }
     
     public void UpdateTheme(string theme)

@@ -3,7 +3,6 @@ using Moq;
 using noKeyCloud.Application.Abstractions.Repositories;
 using noKeyCloud.Application.Features.Folders.CreateFolder;
 using noKeyCloud.Domain.Entities;
-using System.Security.Cryptography;
 using System.Text;
 
 namespace noKeyCloud.Application.UnitTests.Features.Folders.Commands;
@@ -11,12 +10,14 @@ namespace noKeyCloud.Application.UnitTests.Features.Folders.Commands;
 public class CreateFolderHandlerTests
 {
     private readonly Mock<IFolderRepository> _folderRepositoryMock;
+    private readonly Mock<IUnitOfWork> _unitOfWorkMock;
     private readonly CreateFolderHandler _handler;
 
     public CreateFolderHandlerTests()
     {
         _folderRepositoryMock = new Mock<IFolderRepository>();
-        _handler = new CreateFolderHandler(_folderRepositoryMock.Object);
+        _unitOfWorkMock = new Mock<IUnitOfWork>();
+        _handler = new CreateFolderHandler(_folderRepositoryMock.Object, _unitOfWorkMock.Object);
     }
 
     [Fact]
@@ -30,29 +31,20 @@ public class CreateFolderHandlerTests
             ParentFolderId: Guid.NewGuid()
         );
 
-        _folderRepositoryMock
-            .Setup(repo => repo.AddFolder(It.IsAny<Folder>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync((Folder f, CancellationToken _) => f);
-
         var result = await _handler.Handle(command, CancellationToken.None);
 
         Assert.NotNull(result);
         Assert.NotEqual(Guid.Empty, result.Id);
 
-        var inputBytes = Encoding.UTF8.GetBytes($"{userId}:root");
-        var hashBytes = SHA256.HashData(inputBytes);
-        var expectedGuidBytes = new byte[16];
-        Array.Copy(hashBytes, expectedGuidBytes, 16);
-
         _folderRepositoryMock.Verify(
-            x => x.AddFolder(
+            x => x.Add(
                 It.Is<Folder>(f =>
                     f.UserId == command.UserId &&
                     Enumerable.SequenceEqual(f.EncryptedName, command.EncryptedName) &&
                     Enumerable.SequenceEqual(f.EncryptedKey, command.EncryptedKey) &&
-                    f.ParentFolderId == command.ParentFolderId),
-                It.IsAny<CancellationToken>()),
+                    f.ParentFolderId == command.ParentFolderId)),
             Times.Once);
+        _unitOfWorkMock.Verify(u => u.SaveChangesAsync(It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Fact]
@@ -66,18 +58,13 @@ public class CreateFolderHandlerTests
             ParentFolderId: parentId
         );
 
-        _folderRepositoryMock
-            .Setup(repo => repo.AddFolder(It.IsAny<Folder>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync((Folder f, CancellationToken _) => f);
-
         var result = await _handler.Handle(command, CancellationToken.None);
 
         Assert.NotNull(result);
         _folderRepositoryMock.Verify(
-            x => x.AddFolder(
-                It.Is<Folder>(f => f.ParentFolderId == parentId),
-                It.IsAny<CancellationToken>()),
+            x => x.Add(It.Is<Folder>(f => f.ParentFolderId == parentId)),
             Times.Once);
+        _unitOfWorkMock.Verify(u => u.SaveChangesAsync(It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Fact]
@@ -94,10 +81,11 @@ public class CreateFolderHandlerTests
 
         var exception = await Assert.ThrowsAsync<ArgumentException>(act);
         Assert.Contains("cannot be Guid.Empty", exception.Message);
+        _unitOfWorkMock.Verify(u => u.SaveChangesAsync(It.IsAny<CancellationToken>()), Times.Never);
     }
 
     [Fact]
-    public async Task Handle_WhenRepositoryThrowsDbUpdateException_ShouldPropagateException()
+    public async Task Handle_WhenSaveChangesThrowsDbUpdateException_ShouldPropagateException()
     {
         var command = new CreateFolderCommand(
             UserId: Guid.NewGuid(),
@@ -109,8 +97,8 @@ public class CreateFolderHandlerTests
         var innerException = new Exception("Database constraint violation");
         var dbException = new DbUpdateException("An error occurred while updating the entries.", innerException);
 
-        _folderRepositoryMock
-            .Setup(repo => repo.AddFolder(It.IsAny<Folder>(), It.IsAny<CancellationToken>()))
+        _unitOfWorkMock
+            .Setup(u => u.SaveChangesAsync(It.IsAny<CancellationToken>()))
             .ThrowsAsync(dbException);
 
         var act = async () => await _handler.Handle(command, CancellationToken.None);
@@ -133,8 +121,8 @@ public class CreateFolderHandlerTests
         var cancellationTokenSource = new CancellationTokenSource();
         cancellationTokenSource.Cancel();
 
-        _folderRepositoryMock
-            .Setup(repo => repo.AddFolder(It.IsAny<Folder>(), It.IsAny<CancellationToken>()))
+        _unitOfWorkMock
+            .Setup(u => u.SaveChangesAsync(cancellationTokenSource.Token))
             .ThrowsAsync(new OperationCanceledException(cancellationTokenSource.Token));
 
         var act = async () => await _handler.Handle(command, cancellationTokenSource.Token);
@@ -157,6 +145,7 @@ public class CreateFolderHandlerTests
         var exception = await Assert.ThrowsAsync<Exception>(act);
         Assert.Equal("ParentFolderId cannot be null.", exception.Message);
         
-        _folderRepositoryMock.Verify(x => x.AddFolder(It.IsAny<Folder>(), It.IsAny<CancellationToken>()), Times.Never);
+        _folderRepositoryMock.Verify(x => x.Add(It.IsAny<Folder>()), Times.Never);
+        _unitOfWorkMock.Verify(u => u.SaveChangesAsync(It.IsAny<CancellationToken>()), Times.Never);
     }
 }

@@ -5,6 +5,8 @@ using noKeyCloud.Application.Abstractions.Services;
 using noKeyCloud.Application.Configuration;
 using noKeyCloud.Application.Features.Users.LoginVerify;
 using noKeyCloud.Domain.Entities;
+using noKeyCloud.Domain.Enums;
+using noKeyCloud.Domain.ValueObjects;
 
 namespace noKeyCloud.Application.UnitTests.Features.Users.Login;
 
@@ -15,12 +17,17 @@ public class LoginVerifyTests
     private const string SessionKey = "session-key";
     private const string JwtToken = "jwt-token";
     private const string RefreshToken = "refresh-token";
-    
+
+    private static readonly byte[] WrappedMasterKey = [10, 20, 30];
+    private static readonly byte[] KeySalt = [.. "(2<"u8];
+    private static readonly Argon2idParams KdfParams = Argon2idParams.Default;
+
     private readonly Mock<IAuthService> _authServiceMock;
     private readonly Mock<IFolderRepository> _folderRepositoryMock;
     private readonly Mock<IUserRepository> _userRepositoryMock;
+    private readonly Mock<IMasterKeyWrapRepository> _masterKeyWrapRepositoryMock;
     private readonly LoginVerifyCommandHandler _handler;
-    
+
     private static readonly JwtOptions TestJwtOptions = new()
     {
         SecretKey = "unused-in-tests",
@@ -30,14 +37,16 @@ public class LoginVerifyTests
 
     public LoginVerifyTests()
     {
-        _authServiceMock = new Mock<IAuthService>{DefaultValue = DefaultValue.Mock};
+        _authServiceMock = new Mock<IAuthService> { DefaultValue = DefaultValue.Mock };
         _folderRepositoryMock = new Mock<IFolderRepository>();
         _userRepositoryMock = new Mock<IUserRepository>();
+        _masterKeyWrapRepositoryMock = new Mock<IMasterKeyWrapRepository>();
 
         _handler = new LoginVerifyCommandHandler(
             _authServiceMock.Object,
             _folderRepositoryMock.Object,
             _userRepositoryMock.Object,
+            _masterKeyWrapRepositoryMock.Object,
             Options.Create(TestJwtOptions));
     }
 
@@ -47,10 +56,16 @@ public class LoginVerifyTests
             userIdentifier: Guid.NewGuid(),
             email: "test@email.com",
             username: "testuser",
-            registrationRecord: "record",
-            encryptedMasterKey: [10, 20, 30],
-            keySalt: [.. "(2<"u8],
             isAdmin: isAdmin);
+
+    private static MasterKeyWrap CreateFakeOpaqueMasterKeyWrap(Guid userId) =>
+        new(
+            id: Guid.NewGuid(),
+            userId: userId,
+            type: MasterKeyWrapType.OpaquePassword,
+            wrappedMasterKey: WrappedMasterKey,
+            salt: KeySalt,
+            argon2idParams: KdfParams);
 
     private static Folder CreateFakeFolder(Guid userId, Guid folderId)
     {
@@ -69,6 +84,7 @@ public class LoginVerifyTests
     {
         var user = CreateFakeUser(userId, isAdmin);
         var folder = CreateFakeFolder(userId, Guid.NewGuid());
+        var masterKeyWrap = CreateFakeOpaqueMasterKeyWrap(userId);
 
         _authServiceMock
             .Setup(s => s.OpaqueSessions.GetServerLoginStateAsync(sessionId))
@@ -82,6 +98,9 @@ public class LoginVerifyTests
         _userRepositoryMock
             .Setup(r => r.GetUserByUserId(userId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(user);
+        _masterKeyWrapRepositoryMock
+            .Setup(r => r.GetByUserIdAndTypeAsync(userId, MasterKeyWrapType.OpaquePassword,It.IsAny<CancellationToken>()))
+            .ReturnsAsync(masterKeyWrap);
         _authServiceMock
             .Setup(j => j.Jwt.JwtTokenService(userId, isAdmin, It.IsAny<Guid>()))
             .ReturnsAsync(JwtToken);
@@ -168,7 +187,7 @@ public class LoginVerifyTests
         Assert.NotNull(storeSessionId);
         Assert.NotEqual(Guid.Empty, jwtSessionId!.Value);
         Assert.Equal(jwtSessionId, storeSessionId);
-        Assert.NotEqual(sessionId, jwtSessionId.Value); // auth session is distinct from OPAQUE session
+        Assert.NotEqual(sessionId, jwtSessionId.Value);
     }
 
     [Fact]
@@ -240,7 +259,7 @@ public class LoginVerifyTests
     }
 
     [Fact]
-    public async Task Handle_WhenSuccessful_ShouldReturnEncryptedMasterKeyAndSalt()
+    public async Task Handle_WhenSuccessful_ShouldReturnEncryptedMasterKeySaltAndArgon2Params()
     {
         var sessionId = Guid.NewGuid();
         var userId = Guid.NewGuid();
@@ -250,8 +269,25 @@ public class LoginVerifyTests
             new LoginVerifyCommand(sessionId.ToString(), FinishLoginRequest), CancellationToken.None);
 
         Assert.True(result.IsSuccess);
-        Assert.Equal(new byte[] { 10, 20, 30 }, result.Value!.ResponsePayload.EncryptedMasterKey);
-        Assert.Equal("(2<"u8.ToArray(), result.Value.ResponsePayload.KeySalt);
+        Assert.Equal(WrappedMasterKey, result.Value!.ResponsePayload.EncryptedMasterKey);
+        Assert.Equal(KeySalt, result.Value.ResponsePayload.KeySalt);
+    }
+
+    [Fact]
+    public async Task Handle_WhenOpaqueMasterKeyWrapMissing_ShouldReturnFailure()
+    {
+        var sessionId = Guid.NewGuid();
+        var userId = Guid.NewGuid();
+        SetupHappyPath(sessionId, userId);
+        _masterKeyWrapRepositoryMock
+            .Setup(r => r.GetByUserIdAndTypeAsync(userId, MasterKeyWrapType.OpaquePassword,It.IsAny<CancellationToken>()))
+            .ReturnsAsync((MasterKeyWrap?)null);
+
+        var result = await _handler.Handle(
+            new LoginVerifyCommand(sessionId.ToString(), FinishLoginRequest), CancellationToken.None);
+
+        Assert.False(result.IsSuccess);
+        Assert.Null(result.Value);
     }
 
     [Fact]

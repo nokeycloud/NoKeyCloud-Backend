@@ -7,7 +7,7 @@ using noKeyCloud.Domain.Entities;
 
 namespace noKeyCloud.Application.Features.Admin.GenerateRegisterInvite;
 
-public class GenerateRegisterInviteHandler(IRegisterInviteRepository inviteRepository) 
+public class GenerateRegisterInviteHandler(IRegisterInviteRepository inviteRepository, IUnitOfWork unitOfWork) 
     : IRequestHandler<GenerateRegisterInviteCommand, Result<RegisterInviteResponse>>
 {
     public async Task<Result<RegisterInviteResponse>> Handle(GenerateRegisterInviteCommand request, CancellationToken cancellationToken)
@@ -26,7 +26,8 @@ public class GenerateRegisterInviteHandler(IRegisterInviteRepository inviteRepos
             expiresAt
         );
 
-        await inviteRepository.AddAsync(invite, cancellationToken);
+        inviteRepository.Add(invite);
+        await unitOfWork.SaveChangesAsync(cancellationToken);
         
         return Result<RegisterInviteResponse>.Success(new RegisterInviteResponse(invite.Id, invite.Code, invite.CreatedAt, invite.ExpiresAt));
     }
