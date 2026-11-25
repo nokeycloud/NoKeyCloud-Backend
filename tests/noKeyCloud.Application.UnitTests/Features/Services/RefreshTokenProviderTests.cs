@@ -1,7 +1,6 @@
-using System.Text;
-using Microsoft.Extensions.Caching.Distributed;
 using Moq;
 using noKeyCloud.Infrastructure.Services;
+using StackExchange.Redis;
 
 namespace noKeyCloud.Application.UnitTests.Features.Services;
 
@@ -9,46 +8,79 @@ public class RefreshTokenProviderTests
 {
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
 
-    private readonly Mock<IDistributedCache> _cacheMock;
-    private readonly Dictionary<string, byte[]> _store;
+    private readonly Dictionary<string, string> _strings = new();
+    private readonly Dictionary<string, HashSet<string>> _sets = new();
     private readonly RefreshTokenProvider _provider;
 
     public RefreshTokenProviderTests()
     {
-        _store = new Dictionary<string, byte[]>();
-        _cacheMock = new Mock<IDistributedCache>();
+        var dbMock = new Mock<IDatabase>();
+        var redisMock = new Mock<IConnectionMultiplexer>();
 
-        _cacheMock
-            .Setup(c => c.SetAsync(
-                It.IsAny<string>(),
-                It.IsAny<byte[]>(),
-                It.IsAny<DistributedCacheEntryOptions>(),
-                It.IsAny<CancellationToken>()))
-            .Callback<string, byte[], DistributedCacheEntryOptions, CancellationToken>(
-                (key, value, _, _) => _store[key] = value)
-            .Returns(Task.CompletedTask);
+        redisMock
+            .Setup(r => r.GetDatabase(It.IsAny<int>(), It.IsAny<object>()))
+            .Returns(dbMock.Object);
 
-        _cacheMock
-            .Setup(c => c.GetAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
-            .Returns<string, CancellationToken>((key, _) =>
-                Task.FromResult(_store.GetValueOrDefault(key)!)!);
+        dbMock
+            .Setup(db => db.StringGetAsync(It.IsAny<RedisKey>(), It.IsAny<CommandFlags>()))
+            .ReturnsAsync((RedisKey key, CommandFlags _) =>
+                _strings.TryGetValue(key.ToString(), out var v) ? (RedisValue)v : RedisValue.Null);
 
-        _cacheMock
-            .Setup(c => c.RemoveAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
-            .Callback<string, CancellationToken>((key, _) => _store.Remove(key))
-            .Returns(Task.CompletedTask);
+        dbMock
+            .Setup(db => db.StringSetAsync(
+                It.IsAny<RedisKey>(), It.IsAny<RedisValue>(), It.IsAny<TimeSpan?>(),
+                It.IsAny<bool>(), It.IsAny<When>(), It.IsAny<CommandFlags>()))
+            .ReturnsAsync((RedisKey key, RedisValue value, TimeSpan? _, bool _, When _, CommandFlags _) =>
+            {
+                _strings[key.ToString()] = value.ToString();
+                return true;
+            });
 
-        _provider = new RefreshTokenProvider(_cacheMock.Object);
+        dbMock
+            .Setup(db => db.KeyDeleteAsync(It.IsAny<RedisKey>(), It.IsAny<CommandFlags>()))
+            .ReturnsAsync((RedisKey key, CommandFlags _) =>
+            {
+                var stringRemoved = _strings.Remove(key.ToString());
+                var setRemoved = _sets.Remove(key.ToString());
+                return stringRemoved || setRemoved;
+            });
+
+        dbMock
+            .Setup(db => db.SetAddAsync(It.IsAny<RedisKey>(), It.IsAny<RedisValue>(), It.IsAny<CommandFlags>()))
+            .ReturnsAsync((RedisKey key, RedisValue value, CommandFlags _) =>
+            {
+                if (_sets.TryGetValue(key.ToString(), out var set)) return set.Add(value.ToString());
+                set = [];
+                _sets[key.ToString()] = set;
+                return set.Add(value.ToString());
+            });
+
+        dbMock
+            .Setup(db => db.SetRemoveAsync(It.IsAny<RedisKey>(), It.IsAny<RedisValue>(), It.IsAny<CommandFlags>()))
+            .ReturnsAsync((RedisKey key, RedisValue value, CommandFlags _) =>
+                _sets.TryGetValue(key.ToString(), out var set) && set.Remove(value.ToString()));
+
+        dbMock
+            .Setup(db => db.SetMembersAsync(It.IsAny<RedisKey>(), It.IsAny<CommandFlags>()))
+            .ReturnsAsync((RedisKey key, CommandFlags _) =>
+                _sets.TryGetValue(key.ToString(), out var set)
+                    ? [.. set.Select(s => (RedisValue)s)]
+                    : []);
+
+        dbMock
+            .Setup(db => db.KeyExpireAsync(It.IsAny<RedisKey>(), It.IsAny<TimeSpan?>(), It.IsAny<ExpireWhen>(), It.IsAny<CommandFlags>()))
+            .ReturnsAsync(true);
+
+        _provider = new RefreshTokenProvider(redisMock.Object);
     }
 
-    private static string ReverseIndexKey(string token) => $"TokenUser_{token}";
-    private static string UserIndexKey(Guid userId) => $"RefreshToken_{userId}";
+    private static string UserSessionsKey(Guid userId) => $"UserRefreshSessions:{userId}";
+    private static string TokenKey(Guid userId, Guid sessionId) => $"RefreshToken:{userId}:{sessionId}";
 
     [Fact]
     public void GenerateRefreshToken_ShouldReturnNonEmptyBase64()
     {
         var token = _provider.GenerateRefreshToken();
-
         Assert.False(string.IsNullOrWhiteSpace(token));
         var bytes = Convert.FromBase64String(token);
         Assert.Equal(32, bytes.Length);
@@ -67,235 +99,175 @@ public class RefreshTokenProviderTests
     }
 
     [Fact]
-    public async Task StoreRefreshTokenAsync_WhenNoExistingToken_ShouldSetBothKeys()
+    public async Task StoreRefreshTokenAsync_ShouldStoreHashNotRawToken()
     {
         var userId = Guid.NewGuid();
+        var sessionId = Guid.NewGuid();
+        const string rawToken = "super-secret-raw-token";
 
-        await _provider.StoreRefreshTokenAsync(userId, "new-token", TimeSpan.FromHours(24), Ct);
+        await _provider.StoreRefreshTokenAsync(userId, sessionId, rawToken, TimeSpan.FromHours(24), Ct);
 
-        Assert.True(_store.ContainsKey(UserIndexKey(userId)));
-        Assert.True(_store.ContainsKey(ReverseIndexKey("new-token")));
+        foreach (var (k, v) in _strings)
+        {
+            Assert.DoesNotContain(rawToken, k);
+            Assert.DoesNotContain(rawToken, v);
+        }
     }
 
     [Fact]
-    public async Task StoreRefreshTokenAsync_WhenNoExistingToken_ShouldNotIssueAnyRemoveCall()
+    public async Task StoreRefreshTokenAsync_ShouldCreateTokenAndLookupKeys()
     {
         var userId = Guid.NewGuid();
+        var sessionId = Guid.NewGuid();
+        const string rawToken = "tok";
 
-        await _provider.StoreRefreshTokenAsync(userId, "new-token", TimeSpan.FromHours(24), Ct);
+        await _provider.StoreRefreshTokenAsync(userId, sessionId, rawToken, TimeSpan.FromHours(24), Ct);
 
-        _cacheMock.Verify(
-            c => c.RemoveAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()),
-            Times.Never);
+        Assert.True(_strings.ContainsKey(TokenKey(userId, sessionId)));
+        Assert.Contains(_strings.Keys, k => k.StartsWith("RefreshTokenLookup:"));
+        Assert.True(_sets.ContainsKey(UserSessionsKey(userId)));
+        Assert.Contains(sessionId.ToString(), _sets[UserSessionsKey(userId)]);
     }
 
     [Fact]
-    public async Task StoreRefreshTokenAsync_WhenExistingToken_ShouldRemoveOldReverseIndexOnly()
+    public async Task FindByTokenAsync_WhenTokenStored_ShouldReturnUserAndSession()
     {
         var userId = Guid.NewGuid();
-        await _provider.StoreRefreshTokenAsync(userId, "old-token", TimeSpan.FromHours(24), Ct);
+        var sessionId = Guid.NewGuid();
+        const string rawToken = "valid-token";
+        await _provider.StoreRefreshTokenAsync(userId, sessionId, rawToken, TimeSpan.FromHours(24), Ct);
 
-        _cacheMock.Invocations.Clear();
+        var info = await _provider.FindByTokenAsync(rawToken, Ct);
 
-        await _provider.StoreRefreshTokenAsync(userId, "new-token", TimeSpan.FromHours(24), Ct);
-
-        _cacheMock.Verify(
-            c => c.RemoveAsync(ReverseIndexKey("old-token"), It.IsAny<CancellationToken>()),
-            Times.Once);
-        _cacheMock.Verify(
-            c => c.RemoveAsync(UserIndexKey(userId), It.IsAny<CancellationToken>()),
-            Times.Never);
+        Assert.NotNull(info);
+        Assert.Equal(userId, info.UserId);
+        Assert.Equal(sessionId, info.SessionId);
     }
 
     [Fact]
-    public async Task StoreRefreshTokenAsync_WhenExistingToken_ShouldOverwriteUserIndexWithNewToken()
+    public async Task FindByTokenAsync_WhenTokenUnknown_ShouldReturnNull()
+    {
+        var info = await _provider.FindByTokenAsync("nope", Ct);
+        Assert.Null(info);
+    }
+
+    [Fact]
+    public async Task FindByTokenAsync_WhenTokenEmpty_ShouldReturnNull()
+    {
+        Assert.Null(await _provider.FindByTokenAsync(string.Empty, Ct));
+    }
+
+    [Fact]
+    public async Task StoreRefreshTokenAsync_ShouldReplaceOldHashForSameSession()
     {
         var userId = Guid.NewGuid();
-        await _provider.StoreRefreshTokenAsync(userId, "old-token", TimeSpan.FromHours(24), Ct);
+        var sessionId = Guid.NewGuid();
+        await _provider.StoreRefreshTokenAsync(userId, sessionId, "old", TimeSpan.FromHours(24), Ct);
+        var oldLookupKeys = _strings.Keys.Where(k => k.StartsWith("RefreshTokenLookup:")).ToList();
+        Assert.Single(oldLookupKeys);
 
-        await _provider.StoreRefreshTokenAsync(userId, "new-token", TimeSpan.FromHours(24), Ct);
+        await _provider.StoreRefreshTokenAsync(userId, sessionId, "new", TimeSpan.FromHours(24), Ct);
 
-        var stored = await _provider.GetRefreshTokenAsync(userId, Ct);
-        Assert.Equal("new-token", stored);
+        Assert.Single(_strings.Keys, k => k.StartsWith("RefreshTokenLookup:"));
+        Assert.Null(await _provider.FindByTokenAsync("old", Ct));
+        Assert.NotNull(await _provider.FindByTokenAsync("new", Ct));
     }
 
     [Fact]
-    public async Task StoreRefreshTokenAsync_ShouldUseProvidedExpiryForBothKeys()
+    public async Task StoreRefreshTokenAsync_ShouldNotAffectOtherSessionsOfSameUser()
     {
         var userId = Guid.NewGuid();
-        var expiry = TimeSpan.FromMinutes(42);
+        var sessionA = Guid.NewGuid();
+        var sessionB = Guid.NewGuid();
 
-        await _provider.StoreRefreshTokenAsync(userId, "tok", expiry, Ct);
+        await _provider.StoreRefreshTokenAsync(userId, sessionA, "tokenA", TimeSpan.FromHours(24), Ct);
+        await _provider.StoreRefreshTokenAsync(userId, sessionB, "tokenB", TimeSpan.FromHours(24), Ct);
 
-        _cacheMock.Verify(c => c.SetAsync(
-            UserIndexKey(userId),
-            It.IsAny<byte[]>(),
-            It.Is<DistributedCacheEntryOptions>(o => o.AbsoluteExpirationRelativeToNow == expiry),
-            It.IsAny<CancellationToken>()), Times.Once);
-
-        _cacheMock.Verify(c => c.SetAsync(
-            ReverseIndexKey("tok"),
-            It.IsAny<byte[]>(),
-            It.Is<DistributedCacheEntryOptions>(o => o.AbsoluteExpirationRelativeToNow == expiry),
-            It.IsAny<CancellationToken>()), Times.Once);
+        Assert.NotNull(await _provider.FindByTokenAsync("tokenA", Ct));
+        Assert.NotNull(await _provider.FindByTokenAsync("tokenB", Ct));
     }
 
     [Fact]
-    public async Task GetRefreshTokenAsync_WhenKeyExists_ShouldReturnStoredToken()
+    public async Task RevokeSessionAsync_ShouldRemoveOnlyThatSession()
     {
         var userId = Guid.NewGuid();
-        await _provider.StoreRefreshTokenAsync(userId, "stored-token", TimeSpan.FromHours(24), Ct);
+        var sessionA = Guid.NewGuid();
+        var sessionB = Guid.NewGuid();
+        await _provider.StoreRefreshTokenAsync(userId, sessionA, "tokenA", TimeSpan.FromHours(24), Ct);
+        await _provider.StoreRefreshTokenAsync(userId, sessionB, "tokenB", TimeSpan.FromHours(24), Ct);
 
-        var result = await _provider.GetRefreshTokenAsync(userId, Ct);
+        await _provider.RevokeSessionAsync(userId, sessionA, Ct);
 
-        Assert.Equal("stored-token", result);
+        Assert.Null(await _provider.FindByTokenAsync("tokenA", Ct));
+        Assert.NotNull(await _provider.FindByTokenAsync("tokenB", Ct));
+        Assert.False(_strings.ContainsKey(TokenKey(userId, sessionA)));
+        Assert.True(_strings.ContainsKey(TokenKey(userId, sessionB)));
     }
 
     [Fact]
-    public async Task GetRefreshTokenAsync_WhenKeyMissing_ShouldReturnNull()
+    public async Task RevokeSessionAsync_WhenUnknownSession_ShouldNotThrow()
     {
-        var result = await _provider.GetRefreshTokenAsync(Guid.NewGuid(), Ct);
-
-        Assert.Null(result);
+        var ex = await Record.ExceptionAsync(
+            () => _provider.RevokeSessionAsync(Guid.NewGuid(), Guid.NewGuid(), Ct));
+        Assert.Null(ex);
     }
 
     [Fact]
-    public async Task GetUserIdByRefreshTokenAsync_WhenTokenStored_ShouldReturnUserId()
-    {
-        var userId = Guid.NewGuid();
-        await _provider.StoreRefreshTokenAsync(userId, "some-token", TimeSpan.FromHours(24), Ct);
-
-        var result = await _provider.GetUserIdByRefreshTokenAsync("some-token", Ct);
-
-        Assert.Equal(userId, result);
-    }
-
-    [Fact]
-    public async Task GetUserIdByRefreshTokenAsync_WhenTokenMissing_ShouldReturnNull()
-    {
-        var result = await _provider.GetUserIdByRefreshTokenAsync("missing-token", Ct);
-
-        Assert.Null(result);
-    }
-
-    [Fact]
-    public async Task GetUserIdByRefreshTokenAsync_WhenStoredValueIsNotGuid_ShouldReturnNull()
-    {
-        _store[ReverseIndexKey("bad-token")] = Encoding.UTF8.GetBytes("not-a-guid");
-
-        var result = await _provider.GetUserIdByRefreshTokenAsync("bad-token", Ct);
-
-        Assert.Null(result);
-    }
-
-    [Fact]
-    public async Task InvalidateRefreshTokenAsync_WhenTokenExists_ShouldRemoveBothKeys()
+    public async Task RevokeAllSessionsAsync_ShouldRemoveEverySessionForUser()
     {
         var userId = Guid.NewGuid();
-        await _provider.StoreRefreshTokenAsync(userId, "token-to-invalidate", TimeSpan.FromHours(24), Ct);
+        var sessionA = Guid.NewGuid();
+        var sessionB = Guid.NewGuid();
+        await _provider.StoreRefreshTokenAsync(userId, sessionA, "tokenA", TimeSpan.FromHours(24), Ct);
+        await _provider.StoreRefreshTokenAsync(userId, sessionB, "tokenB", TimeSpan.FromHours(24), Ct);
 
-        await _provider.InvalidateRefreshTokenAsync(userId, Ct);
+        await _provider.RevokeAllSessionsAsync(userId, Ct);
 
-        Assert.False(_store.ContainsKey(UserIndexKey(userId)));
-        Assert.False(_store.ContainsKey(ReverseIndexKey("token-to-invalidate")));
+        Assert.Null(await _provider.FindByTokenAsync("tokenA", Ct));
+        Assert.Null(await _provider.FindByTokenAsync("tokenB", Ct));
+        Assert.False(_sets.ContainsKey(UserSessionsKey(userId)));
     }
 
     [Fact]
-    public async Task InvalidateRefreshTokenAsync_WhenNoToken_ShouldOnlyRemoveUserIndex()
+    public async Task RevokeAllSessionsAsync_ShouldNotAffectOtherUsers()
+    {
+        var userA = Guid.NewGuid();
+        var userB = Guid.NewGuid();
+        await _provider.StoreRefreshTokenAsync(userA, Guid.NewGuid(), "tokenA", TimeSpan.FromHours(24), Ct);
+        await _provider.StoreRefreshTokenAsync(userB, Guid.NewGuid(), "tokenB", TimeSpan.FromHours(24), Ct);
+
+        await _provider.RevokeAllSessionsAsync(userA, Ct);
+
+        Assert.Null(await _provider.FindByTokenAsync("tokenA", Ct));
+        Assert.NotNull(await _provider.FindByTokenAsync("tokenB", Ct));
+    }
+
+    [Fact]
+    public async Task RevokeAllSessionsAsync_WhenUserHasNoSessions_ShouldNotThrow()
+    {
+        var ex = await Record.ExceptionAsync(
+            () => _provider.RevokeAllSessionsAsync(Guid.NewGuid(), Ct));
+        Assert.Null(ex);
+    }
+
+    [Fact]
+    public async Task FindByTokenAsync_WhenLookupExistsButSessionKeyMissing_ShouldReturnNull()
     {
         var userId = Guid.NewGuid();
+        var sessionId = Guid.NewGuid();
+        await _provider.StoreRefreshTokenAsync(userId, sessionId, "tok", TimeSpan.FromHours(24), Ct);
+        _strings.Remove(TokenKey(userId, sessionId));
 
-        await _provider.InvalidateRefreshTokenAsync(userId, Ct);
-
-        _cacheMock.Verify(
-            c => c.RemoveAsync(UserIndexKey(userId), It.IsAny<CancellationToken>()),
-            Times.Once);
-        _cacheMock.Verify(
-            c => c.RemoveAsync(It.Is<string>(k => k.StartsWith("TokenUser_")), It.IsAny<CancellationToken>()),
-            Times.Never);
+        Assert.Null(await _provider.FindByTokenAsync("tok", Ct));
     }
 
     [Fact]
-    public async Task InvalidateRefreshTokenAsync_ShouldNotThrowWhenNothingWasStored()
+    public async Task StoreRefreshTokenAsync_ShouldExtendUserSessionsTtl()
     {
         var userId = Guid.NewGuid();
+        var sessionId = Guid.NewGuid();
+        await _provider.StoreRefreshTokenAsync(userId, sessionId, "tok", TimeSpan.FromHours(24), Ct);
 
-        var exception = await Record.ExceptionAsync(() => _provider.InvalidateRefreshTokenAsync(userId, Ct));
-
-        Assert.Null(exception);
-    }
-
-    [Fact]
-    public async Task RevokeRefreshTokenAsync_WhenTokenValid_ShouldRemoveBothKeys()
-    {
-        var userId = Guid.NewGuid();
-        await _provider.StoreRefreshTokenAsync(userId, "revocable-token", TimeSpan.FromHours(24), Ct);
-
-        await _provider.RevokeRefreshTokenAsync("revocable-token", Ct);
-
-        Assert.False(_store.ContainsKey(UserIndexKey(userId)));
-        Assert.False(_store.ContainsKey(ReverseIndexKey("revocable-token")));
-    }
-
-    [Fact]
-    public async Task RevokeRefreshTokenAsync_WhenTokenUnknown_ShouldNotIssueAnyRemoveCall()
-    {
-        await _provider.RevokeRefreshTokenAsync("unknown-token", Ct);
-
-        _cacheMock.Verify(
-            c => c.RemoveAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()),
-            Times.Never);
-    }
-
-    [Fact]
-    public async Task RevokeRefreshTokenAsync_WhenTokenUnknown_ShouldNotThrow()
-    {
-        var exception = await Record.ExceptionAsync(() => _provider.RevokeRefreshTokenAsync("unknown-token", Ct));
-
-        Assert.Null(exception);
-    }
-
-    [Fact]
-    public async Task RevokeRefreshTokenAsync_ShouldNotRemoveAnotherUsersToken()
-    {
-        var ownerId = Guid.NewGuid();
-        var otherUserId = Guid.NewGuid();
-
-        await _provider.StoreRefreshTokenAsync(ownerId, "owner-token", TimeSpan.FromHours(24), Ct);
-        await _provider.StoreRefreshTokenAsync(otherUserId, "other-token", TimeSpan.FromHours(24), Ct);
-
-        await _provider.RevokeRefreshTokenAsync("owner-token", Ct);
-
-        Assert.False(_store.ContainsKey(UserIndexKey(ownerId)));
-        Assert.False(_store.ContainsKey(ReverseIndexKey("owner-token")));
-
-        Assert.True(_store.ContainsKey(UserIndexKey(otherUserId)));
-        Assert.True(_store.ContainsKey(ReverseIndexKey("other-token")));
-    }
-
-    [Fact]
-    public async Task StoreRefreshTokenAsync_ShouldForwardCancellationToken()
-    {
-        var userId = Guid.NewGuid();
-
-        await _provider.StoreRefreshTokenAsync(userId, "tok", TimeSpan.FromHours(24), Ct);
-
-        _cacheMock.Verify(
-            c => c.SetAsync(
-                It.IsAny<string>(),
-                It.IsAny<byte[]>(),
-                It.IsAny<DistributedCacheEntryOptions>(),
-                Ct),
-            Times.Exactly(2));
-    }
-
-    [Fact]
-    public async Task GetRefreshTokenAsync_ShouldForwardCancellationToken()
-    {
-        var userId = Guid.NewGuid();
-
-        await _provider.GetRefreshTokenAsync(userId, Ct);
-
-        _cacheMock.Verify(c => c.GetAsync(UserIndexKey(userId), Ct), Times.Once);
+        Assert.True(_sets.ContainsKey(UserSessionsKey(userId)));
     }
 }

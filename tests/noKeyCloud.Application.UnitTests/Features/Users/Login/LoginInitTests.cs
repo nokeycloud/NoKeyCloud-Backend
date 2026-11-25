@@ -16,22 +16,19 @@ public class LoginInitTests
 
     private readonly Mock<IUserRepository> _userRepositoryMock;
     private readonly Mock<IOpaqueServerSetupProvider> _serverSetupProviderMock;
-    private readonly Mock<IOpaqueAuthService> _opaqueAuthServiceMock;
-    private readonly Mock<IOpaqueSessionStore> _sessionStoreMock;
+    private readonly Mock<IAuthService> _authServiceMock;
     private readonly LoginInitCommandHandler _handler;
 
     public LoginInitTests()
     {
         _userRepositoryMock = new Mock<IUserRepository>();
         _serverSetupProviderMock = new Mock<IOpaqueServerSetupProvider>();
-        _opaqueAuthServiceMock = new Mock<IOpaqueAuthService>();
-        _sessionStoreMock = new Mock<IOpaqueSessionStore>();
+        _authServiceMock = new Mock<IAuthService>{DefaultValue = DefaultValue.Mock};
 
         _handler = new LoginInitCommandHandler(
             _userRepositoryMock.Object,
             _serverSetupProviderMock.Object,
-            _opaqueAuthServiceMock.Object,
-            _sessionStoreMock.Object);
+            _authServiceMock.Object);
     }
 
     private static User CreateFakeUser(Guid id) =>
@@ -50,8 +47,8 @@ public class LoginInitTests
             .Setup(p => p.GetServerSetupAsync(It.IsAny<CancellationToken>()))
             .ReturnsAsync(ServerSetup);
 
-        _opaqueAuthServiceMock
-            .Setup(s => s.ServerStartLogin(
+        _authServiceMock
+            .Setup(s => s.Opaque.ServerStartLogin(
                 ServerSetup,
                 StartLoginRequest,
                 user.UserIdentifier.ToString(),
@@ -75,8 +72,8 @@ public class LoginInitTests
         Assert.Null(result.Value);
         _serverSetupProviderMock.Verify(
             p => p.GetServerSetupAsync(It.IsAny<CancellationToken>()), Times.Never);
-        _opaqueAuthServiceMock.Verify(
-            s => s.ServerStartLogin(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>()),
+        _authServiceMock.Verify(
+            s => s.Opaque.ServerStartLogin(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>()),
             Times.Never);
     }
 
@@ -172,8 +169,8 @@ public class LoginInitTests
 
         var result = await _handler.Handle(command, CancellationToken.None);
 
-        _sessionStoreMock.Verify(
-            s => s.SaveSessionAsync(
+        _authServiceMock.Verify(
+            s => s.OpaqueSessions.SaveSessionAsync(
                 result.Value!.SessionId,
                 user.Id,
                 ServerLoginState,
@@ -194,8 +191,8 @@ public class LoginInitTests
 
         await _handler.Handle(command, CancellationToken.None);
 
-        _opaqueAuthServiceMock.Verify(
-            s => s.ServerStartLogin(
+        _authServiceMock.Verify(
+            s => s.Opaque.ServerStartLogin(
                 ServerSetup,
                 StartLoginRequest,
                 user.UserIdentifier.ToString(),
@@ -213,8 +210,8 @@ public class LoginInitTests
         _serverSetupProviderMock
             .Setup(p => p.GetServerSetupAsync(It.IsAny<CancellationToken>()))
             .ReturnsAsync(ServerSetup);
-        _opaqueAuthServiceMock
-            .Setup(s => s.ServerStartLogin(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>()))
+        _authServiceMock
+            .Setup(s => s.Opaque.ServerStartLogin(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>()))
             .Throws(new InvalidOperationException("Opaque failure"));
 
         var command = new LoginInitCommand("testuser", "test@email.com", StartLoginRequest);
@@ -223,8 +220,8 @@ public class LoginInitTests
 
         Assert.False(result.IsSuccess);
         Assert.Equal("Invalid client login request", result.Error);
-        _sessionStoreMock.Verify(
-            s => s.SaveSessionAsync(It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<string>(), It.IsAny<TimeSpan?>()),
+        _authServiceMock.Verify(
+            s => s.OpaqueSessions.SaveSessionAsync(It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<string>(), It.IsAny<TimeSpan?>()),
             Times.Never);
     }
 

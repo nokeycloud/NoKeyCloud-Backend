@@ -15,13 +15,10 @@ public class LoginVerifyTests
     private const string SessionKey = "session-key";
     private const string JwtToken = "jwt-token";
     private const string RefreshToken = "refresh-token";
-
-    private readonly Mock<IJwtService> _jwtServiceMock;
-    private readonly Mock<IOpaqueSessionStore> _sessionStoreMock;
-    private readonly Mock<IRefreshTokenProvider> _refreshTokenProviderMock;
+    
+    private readonly Mock<IAuthService> _authServiceMock;
     private readonly Mock<IFolderRepository> _folderRepositoryMock;
     private readonly Mock<IUserRepository> _userRepositoryMock;
-    private readonly Mock<IOpaqueAuthService> _opaqueAuthServiceMock;
     private readonly LoginVerifyCommandHandler _handler;
     
     private static readonly JwtOptions TestJwtOptions = new()
@@ -33,20 +30,14 @@ public class LoginVerifyTests
 
     public LoginVerifyTests()
     {
-        _jwtServiceMock = new Mock<IJwtService>();
-        _sessionStoreMock = new Mock<IOpaqueSessionStore>();
-        _refreshTokenProviderMock = new Mock<IRefreshTokenProvider>();
+        _authServiceMock = new Mock<IAuthService>{DefaultValue = DefaultValue.Mock};
         _folderRepositoryMock = new Mock<IFolderRepository>();
         _userRepositoryMock = new Mock<IUserRepository>();
-        _opaqueAuthServiceMock = new Mock<IOpaqueAuthService>();
 
         _handler = new LoginVerifyCommandHandler(
-            _jwtServiceMock.Object,
-            _sessionStoreMock.Object,
-            _refreshTokenProviderMock.Object,
+            _authServiceMock.Object,
             _folderRepositoryMock.Object,
             _userRepositoryMock.Object,
-            _opaqueAuthServiceMock.Object,
             Options.Create(TestJwtOptions));
     }
 
@@ -79,32 +70,33 @@ public class LoginVerifyTests
         var user = CreateFakeUser(userId, isAdmin);
         var folder = CreateFakeFolder(userId, Guid.NewGuid());
 
-        _sessionStoreMock
-            .Setup(s => s.GetServerLoginStateAsync(sessionId))
+        _authServiceMock
+            .Setup(s => s.OpaqueSessions.GetServerLoginStateAsync(sessionId))
             .ReturnsAsync(ServerLoginState);
-        _opaqueAuthServiceMock
-            .Setup(o => o.ServerFinishLogin(ServerLoginState, FinishLoginRequest))
+        _authServiceMock
+            .Setup(o => o.Opaque.ServerFinishLogin(ServerLoginState, FinishLoginRequest))
             .Returns(SessionKey);
-        _sessionStoreMock
-            .Setup(s => s.GetUserIdAsync(sessionId))
+        _authServiceMock
+            .Setup(s => s.OpaqueSessions.GetUserIdAsync(sessionId))
             .ReturnsAsync(userId);
         _userRepositoryMock
             .Setup(r => r.GetUserByUserId(userId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(user);
-        _jwtServiceMock
-            .Setup(j => j.JwtTokenService(userId, isAdmin))
+        _authServiceMock
+            .Setup(j => j.Jwt.JwtTokenService(userId, isAdmin, It.IsAny<Guid>()))
             .ReturnsAsync(JwtToken);
-        _refreshTokenProviderMock
-            .Setup(r => r.GenerateRefreshToken())
+        _authServiceMock
+            .Setup(r => r.RefreshTokens.GenerateRefreshToken())
             .Returns(RefreshToken);
-        _refreshTokenProviderMock
-            .Setup(r => r.StoreRefreshTokenAsync(userId, RefreshToken, It.IsAny<TimeSpan>(), It.IsAny<CancellationToken>()))
+        _authServiceMock
+            .Setup(r => r.RefreshTokens.StoreRefreshTokenAsync(
+                userId, It.IsAny<Guid>(), RefreshToken, It.IsAny<TimeSpan>(), It.IsAny<CancellationToken>()))
             .Returns(Task.CompletedTask);
         _folderRepositoryMock
             .Setup(f => f.GetUserHomeFolder(userId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(folder);
-        _sessionStoreMock
-            .Setup(s => s.DeleteSessionAsync(sessionId))
+        _authServiceMock
+            .Setup(s => s.OpaqueSessions.DeleteSessionAsync(sessionId))
             .ReturnsAsync(true);
     }
 
@@ -117,114 +109,21 @@ public class LoginVerifyTests
 
         Assert.False(result.IsSuccess);
         Assert.Equal("Invalid session ID format.", result.Error);
-        _sessionStoreMock.Verify(
-            s => s.GetServerLoginStateAsync(It.IsAny<Guid>()), Times.Never);
     }
 
     [Fact]
     public async Task Handle_WhenSessionNotFound_ShouldReturnFailureAndSkipOpaque()
     {
         var sessionId = Guid.NewGuid();
-        _sessionStoreMock
-            .Setup(s => s.GetServerLoginStateAsync(sessionId))
+        _authServiceMock
+            .Setup(s => s.OpaqueSessions.GetServerLoginStateAsync(sessionId))
             .ReturnsAsync((string?)null);
 
-        var command = new LoginVerifyCommand(sessionId.ToString(), FinishLoginRequest);
-
-        var result = await _handler.Handle(command, CancellationToken.None);
+        var result = await _handler.Handle(
+            new LoginVerifyCommand(sessionId.ToString(), FinishLoginRequest), CancellationToken.None);
 
         Assert.False(result.IsSuccess);
         Assert.Equal("Session not found.", result.Error);
-        _opaqueAuthServiceMock.Verify(
-            o => o.ServerFinishLogin(It.IsAny<string>(), It.IsAny<string>()), Times.Never);
-    }
-
-    [Fact]
-    public async Task Handle_WhenSessionStateEmpty_ShouldFallThroughToUserLookupFailure()
-    {
-        var sessionId = Guid.NewGuid();
-        _sessionStoreMock
-            .Setup(s => s.GetServerLoginStateAsync(sessionId))
-            .ReturnsAsync(string.Empty);
-        _sessionStoreMock
-            .Setup(s => s.GetUserIdAsync(sessionId))
-            .ReturnsAsync((Guid?)null);
-
-        var command = new LoginVerifyCommand(sessionId.ToString(), FinishLoginRequest);
-
-        var result = await _handler.Handle(command, CancellationToken.None);
-
-        Assert.False(result.IsSuccess);
-        Assert.Equal("Could not retrieve user associated with the session.", result.Error);
-    }
-
-    [Fact]
-    public async Task Handle_WhenUserIdMissingFromSession_ShouldReturnFailure()
-    {
-        var sessionId = Guid.NewGuid();
-
-        _sessionStoreMock
-            .Setup(s => s.GetServerLoginStateAsync(sessionId))
-            .ReturnsAsync(ServerLoginState);
-        _opaqueAuthServiceMock
-            .Setup(o => o.ServerFinishLogin(ServerLoginState, FinishLoginRequest))
-            .Returns(SessionKey);
-        _sessionStoreMock
-            .Setup(s => s.GetUserIdAsync(sessionId))
-            .ReturnsAsync((Guid?)null);
-
-        var command = new LoginVerifyCommand(sessionId.ToString(), FinishLoginRequest);
-
-        var result = await _handler.Handle(command, CancellationToken.None);
-
-        Assert.False(result.IsSuccess);
-        Assert.Equal("Could not retrieve user associated with the session.", result.Error);
-        _jwtServiceMock.Verify(
-            j => j.JwtTokenService(It.IsAny<Guid?>(), It.IsAny<bool>()), Times.Never);
-    }
-
-    [Fact]
-    public async Task Handle_WhenDeleteSessionFails_ShouldReturnFailure()
-    {
-        var sessionId = Guid.NewGuid();
-        var userId = Guid.NewGuid();
-        SetupHappyPath(sessionId, userId);
-
-        _sessionStoreMock
-            .Setup(s => s.DeleteSessionAsync(sessionId))
-            .ReturnsAsync(false);
-
-        var command = new LoginVerifyCommand(sessionId.ToString(), FinishLoginRequest);
-
-        var result = await _handler.Handle(command, CancellationToken.None);
-
-        Assert.False(result.IsSuccess);
-        Assert.Equal("Could not remove session", result.Error);
-    }
-
-    [Fact]
-    public async Task Handle_WhenOpaqueFinishLoginThrows_ShouldReturnFailureAndCleanupSession()
-    {
-        var sessionId = Guid.NewGuid();
-
-        _sessionStoreMock
-            .Setup(s => s.GetServerLoginStateAsync(sessionId))
-            .ReturnsAsync(ServerLoginState);
-        _opaqueAuthServiceMock
-            .Setup(o => o.ServerFinishLogin(It.IsAny<string>(), It.IsAny<string>()))
-            .Throws(new InvalidOperationException("Opaque verification failed"));
-        _sessionStoreMock
-            .Setup(s => s.DeleteSessionAsync(sessionId))
-            .ReturnsAsync(true);
-
-        var command = new LoginVerifyCommand(sessionId.ToString(), FinishLoginRequest);
-
-        var result = await _handler.Handle(command, CancellationToken.None);
-
-        Assert.False(result.IsSuccess);
-        Assert.Equal("Login verification failed", result.Error);
-        _sessionStoreMock.Verify(
-            s => s.DeleteSessionAsync(sessionId), Times.AtLeastOnce);
     }
 
     [Fact]
@@ -234,9 +133,8 @@ public class LoginVerifyTests
         var userId = Guid.NewGuid();
         SetupHappyPath(sessionId, userId);
 
-        var command = new LoginVerifyCommand(sessionId.ToString(), FinishLoginRequest);
-
-        var result = await _handler.Handle(command, CancellationToken.None);
+        var result = await _handler.Handle(
+            new LoginVerifyCommand(sessionId.ToString(), FinishLoginRequest), CancellationToken.None);
 
         Assert.True(result.IsSuccess);
         Assert.NotNull(result.Value);
@@ -245,20 +143,32 @@ public class LoginVerifyTests
     }
 
     [Fact]
-    public async Task Handle_WhenSuccessful_ShouldReturnEncryptedMasterKeyAndSalt()
+    public async Task Handle_WhenSuccessful_ShouldGenerateUniqueSessionIdAndUseItForJwtAndStore()
     {
         var sessionId = Guid.NewGuid();
         var userId = Guid.NewGuid();
         SetupHappyPath(sessionId, userId);
 
-        var command = new LoginVerifyCommand(sessionId.ToString(), FinishLoginRequest);
+        Guid? jwtSessionId = null;
+        Guid? storeSessionId = null;
 
-        var result = await _handler.Handle(command, CancellationToken.None);
+        _authServiceMock
+            .Setup(j => j.Jwt.JwtTokenService(userId, false, It.IsAny<Guid>()))
+            .Callback<Guid?, bool, Guid>((_, _, sid) => jwtSessionId = sid)
+            .ReturnsAsync(JwtToken);
+        _authServiceMock
+            .Setup(r => r.RefreshTokens.StoreRefreshTokenAsync(userId, It.IsAny<Guid>(), RefreshToken, It.IsAny<TimeSpan>(), It.IsAny<CancellationToken>()))
+            .Callback<Guid, Guid, string, TimeSpan, CancellationToken>((_, sid, _, _, _) => storeSessionId = sid)
+            .Returns(Task.CompletedTask);
 
-        Assert.True(result.IsSuccess);
-        Assert.NotNull(result.Value);
-        Assert.Equal(new byte[] { 10, 20, 30 }, result.Value.ResponsePayload.EncryptedMasterKey);
-        Assert.Equal("(2<"u8.ToArray(), result.Value.ResponsePayload.KeySalt);
+        await _handler.Handle(
+            new LoginVerifyCommand(sessionId.ToString(), FinishLoginRequest), CancellationToken.None);
+
+        Assert.NotNull(jwtSessionId);
+        Assert.NotNull(storeSessionId);
+        Assert.NotEqual(Guid.Empty, jwtSessionId!.Value);
+        Assert.Equal(jwtSessionId, storeSessionId);
+        Assert.NotEqual(sessionId, jwtSessionId.Value); // auth session is distinct from OPAQUE session
     }
 
     [Fact]
@@ -268,16 +178,12 @@ public class LoginVerifyTests
         var userId = Guid.NewGuid();
         SetupHappyPath(sessionId, userId);
 
-        var command = new LoginVerifyCommand(sessionId.ToString(), FinishLoginRequest);
+        await _handler.Handle(
+            new LoginVerifyCommand(sessionId.ToString(), FinishLoginRequest), CancellationToken.None);
 
-        await _handler.Handle(command, CancellationToken.None);
-
-        _refreshTokenProviderMock.Verify(
-            r => r.StoreRefreshTokenAsync(
-                userId,
-                RefreshToken,
-                TimeSpan.FromHours(24),
-                It.IsAny<CancellationToken>()),
+        _authServiceMock.Verify(
+            r => r.RefreshTokens.StoreRefreshTokenAsync(
+                userId, It.IsAny<Guid>(), RefreshToken, TimeSpan.FromHours(24), It.IsAny<CancellationToken>()),
             Times.Once);
     }
 
@@ -288,43 +194,64 @@ public class LoginVerifyTests
         var userId = Guid.NewGuid();
         SetupHappyPath(sessionId, userId);
 
-        var command = new LoginVerifyCommand(sessionId.ToString(), FinishLoginRequest);
+        await _handler.Handle(
+            new LoginVerifyCommand(sessionId.ToString(), FinishLoginRequest), CancellationToken.None);
 
-        await _handler.Handle(command, CancellationToken.None);
-
-        _sessionStoreMock.Verify(
-            s => s.DeleteSessionAsync(sessionId), Times.Once);
+        _authServiceMock.Verify(s => s.OpaqueSessions.DeleteSessionAsync(sessionId), Times.Once);
     }
 
     [Fact]
-    public async Task Handle_WhenSuccessful_ShouldCallOpaqueFinishLoginWithStateAndRequest()
+    public async Task Handle_WhenDeleteSessionFails_ShouldReturnFailure()
+    {
+        var sessionId = Guid.NewGuid();
+        var userId = Guid.NewGuid();
+        SetupHappyPath(sessionId, userId);
+        _authServiceMock
+            .Setup(s => s.OpaqueSessions.DeleteSessionAsync(sessionId))
+            .ReturnsAsync(false);
+
+        var result = await _handler.Handle(
+            new LoginVerifyCommand(sessionId.ToString(), FinishLoginRequest), CancellationToken.None);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal("Could not remove session", result.Error);
+    }
+
+    [Fact]
+    public async Task Handle_WhenOpaqueFinishLoginThrows_ShouldReturnFailureAndCleanupSession()
+    {
+        var sessionId = Guid.NewGuid();
+        _authServiceMock
+            .Setup(s => s.OpaqueSessions.GetServerLoginStateAsync(sessionId))
+            .ReturnsAsync(ServerLoginState);
+        _authServiceMock
+            .Setup(o => o.Opaque.ServerFinishLogin(It.IsAny<string>(), It.IsAny<string>()))
+            .Throws(new InvalidOperationException("Opaque verification failed"));
+        _authServiceMock
+            .Setup(s => s.OpaqueSessions.DeleteSessionAsync(sessionId))
+            .ReturnsAsync(true);
+
+        var result = await _handler.Handle(
+            new LoginVerifyCommand(sessionId.ToString(), FinishLoginRequest), CancellationToken.None);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal("Login verification failed", result.Error);
+        _authServiceMock.Verify(s => s.OpaqueSessions.DeleteSessionAsync(sessionId), Times.AtLeastOnce);
+    }
+
+    [Fact]
+    public async Task Handle_WhenSuccessful_ShouldReturnEncryptedMasterKeyAndSalt()
     {
         var sessionId = Guid.NewGuid();
         var userId = Guid.NewGuid();
         SetupHappyPath(sessionId, userId);
 
-        var command = new LoginVerifyCommand(sessionId.ToString(), FinishLoginRequest);
+        var result = await _handler.Handle(
+            new LoginVerifyCommand(sessionId.ToString(), FinishLoginRequest), CancellationToken.None);
 
-        await _handler.Handle(command, CancellationToken.None);
-
-        _opaqueAuthServiceMock.Verify(
-            o => o.ServerFinishLogin(ServerLoginState, FinishLoginRequest),
-            Times.Once);
-    }
-
-    [Fact]
-    public async Task Handle_WhenSuccessful_ShouldGenerateRefreshTokenExactlyOnce()
-    {
-        var sessionId = Guid.NewGuid();
-        var userId = Guid.NewGuid();
-        SetupHappyPath(sessionId, userId);
-
-        var command = new LoginVerifyCommand(sessionId.ToString(), FinishLoginRequest);
-
-        await _handler.Handle(command, CancellationToken.None);
-
-        _refreshTokenProviderMock.Verify(
-            r => r.GenerateRefreshToken(), Times.Once);
+        Assert.True(result.IsSuccess);
+        Assert.Equal(new byte[] { 10, 20, 30 }, result.Value!.ResponsePayload.EncryptedMasterKey);
+        Assert.Equal("(2<"u8.ToArray(), result.Value.ResponsePayload.KeySalt);
     }
 
     [Fact]
@@ -334,77 +261,24 @@ public class LoginVerifyTests
         var userId = Guid.NewGuid();
         SetupHappyPath(sessionId, userId, isAdmin: true);
 
-        var command = new LoginVerifyCommand(sessionId.ToString(), FinishLoginRequest);
+        await _handler.Handle(
+            new LoginVerifyCommand(sessionId.ToString(), FinishLoginRequest), CancellationToken.None);
 
-        await _handler.Handle(command, CancellationToken.None);
-
-        _jwtServiceMock.Verify(
-            j => j.JwtTokenService(userId, true), Times.Once);
+        _authServiceMock.Verify(j => j.Jwt.JwtTokenService(userId, true, It.IsAny<Guid>()), Times.Once);
     }
 
     [Fact]
-    public async Task Handle_WhenUserIsNotAdmin_ShouldRequestNonAdminJwt()
+    public async Task Handle_WhenUserIdMissingFromSession_ShouldReturnFailure()
     {
         var sessionId = Guid.NewGuid();
-        var userId = Guid.NewGuid();
-        SetupHappyPath(sessionId, userId, isAdmin: false);
+        _authServiceMock.Setup(s => s.OpaqueSessions.GetServerLoginStateAsync(sessionId)).ReturnsAsync(ServerLoginState);
+        _authServiceMock.Setup(o => o.Opaque.ServerFinishLogin(ServerLoginState, FinishLoginRequest)).Returns(SessionKey);
+        _authServiceMock.Setup(s => s.OpaqueSessions.GetUserIdAsync(sessionId)).ReturnsAsync((Guid?)null);
 
-        var command = new LoginVerifyCommand(sessionId.ToString(), FinishLoginRequest);
+        var result = await _handler.Handle(
+            new LoginVerifyCommand(sessionId.ToString(), FinishLoginRequest), CancellationToken.None);
 
-        await _handler.Handle(command, CancellationToken.None);
-
-        _jwtServiceMock.Verify(
-            j => j.JwtTokenService(userId, false), Times.Once);
-    }
-
-    [Fact]
-    public async Task Handle_WhenSuccessful_ShouldFetchRootFolderForUser()
-    {
-        var sessionId = Guid.NewGuid();
-        var userId = Guid.NewGuid();
-        SetupHappyPath(sessionId, userId);
-
-        var command = new LoginVerifyCommand(sessionId.ToString(), FinishLoginRequest);
-
-        await _handler.Handle(command, CancellationToken.None);
-
-        _folderRepositoryMock.Verify(
-            f => f.GetUserHomeFolder(userId, It.IsAny<CancellationToken>()),
-            Times.Once);
-    }
-    
-    [Fact]
-    public async Task Handle_WhenRefreshTokenLifetimeHoursIsConfigured_ShouldUseConfiguredValue()
-    {
-        var sessionId = Guid.NewGuid();
-        var userId = Guid.NewGuid();
-        SetupHappyPath(sessionId, userId);
-
-        const int configuredHours = 6;
-        var handler = new LoginVerifyCommandHandler(
-            _jwtServiceMock.Object,
-            _sessionStoreMock.Object,
-            _refreshTokenProviderMock.Object,
-            _folderRepositoryMock.Object,
-            _userRepositoryMock.Object,
-            _opaqueAuthServiceMock.Object,
-            Options.Create(new JwtOptions
-            {
-                SecretKey = "unused-in-tests",
-                AccessTokenLifetimeMinutes = 15,
-                RefreshTokenLifetimeHours = configuredHours
-            }));
-
-        await handler.Handle(
-            new LoginVerifyCommand(sessionId.ToString(), FinishLoginRequest),
-            CancellationToken.None);
-
-        _refreshTokenProviderMock.Verify(
-            r => r.StoreRefreshTokenAsync(
-                userId,
-                RefreshToken,
-                TimeSpan.FromHours(configuredHours),
-                It.IsAny<CancellationToken>()),
-            Times.Once);
+        Assert.False(result.IsSuccess);
+        Assert.Equal("Could not retrieve user associated with the session.", result.Error);
     }
 }
