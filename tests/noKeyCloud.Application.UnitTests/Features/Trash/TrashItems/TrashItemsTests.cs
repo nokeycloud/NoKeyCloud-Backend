@@ -1,21 +1,21 @@
 using Moq;
 using noKeyCloud.Application.Abstractions.Repositories;
-using noKeyCloud.Application.Features.Shared;
+using noKeyCloud.Application.Features.Trash.TrashItems;
 
-namespace noKeyCloud.Application.UnitTests.Features.File.SoftDeleteFile;
+namespace noKeyCloud.Application.UnitTests.Features.Trash.TrashItems;
 
-public class SoftDeleteFileTests
+public class TrashItemsTests
 {
     private readonly Mock<IFileRepository> _fileRepositoryMock;
     private readonly Mock<IFolderRepository> _folderRepositoryMock;
-    private readonly SoftDeleteFileHandler _handler;
+    private readonly TrashItemsHandler _handler;
 
-    public SoftDeleteFileTests()
+    public TrashItemsTests()
     {
         _fileRepositoryMock = new Mock<IFileRepository>();
         _folderRepositoryMock = new Mock<IFolderRepository>();
 
-        _handler = new SoftDeleteFileHandler(
+        _handler = new TrashItemsHandler(
             _fileRepositoryMock.Object,
             _folderRepositoryMock.Object);
     }
@@ -23,8 +23,7 @@ public class SoftDeleteFileTests
     private void SetupFiles(bool result)
     {
         _fileRepositoryMock
-            .Setup(r => r.SoftDeleteById(
-                It.IsAny<IReadOnlyList<Guid>>(),
+            .Setup(r => r.SoftDeleteFileById(
                 It.IsAny<IReadOnlyList<Guid>>(),
                 It.IsAny<Guid>(),
                 It.IsAny<byte[]>(),
@@ -40,7 +39,15 @@ public class SoftDeleteFileTests
                 It.IsAny<IReadOnlyList<Guid>>(),
                 It.IsAny<Guid>(),
                 It.IsAny<CancellationToken>()))
-            .ReturnsAsync((success, error));
+            .ReturnsAsync((List<Guid> foldersId, IReadOnlyList<Guid> folderIds, Guid _, CancellationToken _) =>
+            {
+                if (success)
+                {
+                    foldersId.AddRange(folderIds);
+                }
+
+                return (success, error);
+            });
     }
 
     private void SetupFolderDelete(bool success, string error = "")
@@ -65,15 +72,14 @@ public class SoftDeleteFileTests
         SetupFiles(true);
         SetupFolderDelete(true);
 
-        var command = new SoftDeleteFileCommand([fileId], [folderId], userId, [1, 2, 3]);
+        var command = new TrashItemsCommand([fileId], [folderId], userId, [1, 2, 3]);
 
         var result = await _handler.Handle(command, CancellationToken.None);
 
         Assert.True(result.IsSuccess);
 
-        _fileRepositoryMock.Verify(r => r.SoftDeleteById(
+        _fileRepositoryMock.Verify(r => r.SoftDeleteFileById(
             It.Is<IReadOnlyList<Guid>>(ids => ids.Contains(fileId)),
-            It.IsAny<IReadOnlyList<Guid>>(),
             userId,
             It.IsAny<byte[]>(),
             It.IsAny<CancellationToken>()), Times.Once);
@@ -99,14 +105,13 @@ public class SoftDeleteFileTests
 
         SetupFiles(true);
 
-        var command = new SoftDeleteFileCommand([fileId], [], userId, [1]);
+        var command = new TrashItemsCommand([fileId], [], userId, [1]);
 
         var result = await _handler.Handle(command, CancellationToken.None);
 
         Assert.True(result.IsSuccess);
 
-        _fileRepositoryMock.Verify(r => r.SoftDeleteById(
-            It.IsAny<IReadOnlyList<Guid>>(),
+        _fileRepositoryMock.Verify(r => r.SoftDeleteFileById(
             It.IsAny<IReadOnlyList<Guid>>(),
             userId,
             It.IsAny<byte[]>(),
@@ -134,14 +139,13 @@ public class SoftDeleteFileTests
         SetupFolderLookup(true);
         SetupFolderDelete(true);
 
-        var command = new SoftDeleteFileCommand([], [folderId], userId, [1]);
+        var command = new TrashItemsCommand([], [folderId], userId, [1]);
 
         var result = await _handler.Handle(command, CancellationToken.None);
 
         Assert.True(result.IsSuccess);
 
-        _fileRepositoryMock.Verify(r => r.SoftDeleteById(
-            It.IsAny<IReadOnlyList<Guid>>(),
+        _fileRepositoryMock.Verify(r => r.SoftDeleteFileById(
             It.IsAny<IReadOnlyList<Guid>>(),
             It.IsAny<Guid>(),
             It.IsAny<byte[]>(),
@@ -157,15 +161,14 @@ public class SoftDeleteFileTests
     [Fact]
     public async Task Handle_WithNoIds_ShouldReturnFailure()
     {
-        var command = new SoftDeleteFileCommand([], [], Guid.NewGuid(), [1]);
+        var command = new TrashItemsCommand([], [], Guid.NewGuid(), [1]);
 
         var result = await _handler.Handle(command, CancellationToken.None);
 
         Assert.False(result.IsSuccess);
         Assert.Equal("No file or folder ids provided", result.Error);
 
-        _fileRepositoryMock.Verify(r => r.SoftDeleteById(
-            It.IsAny<IReadOnlyList<Guid>>(),
+        _fileRepositoryMock.Verify(r => r.SoftDeleteFileById(
             It.IsAny<IReadOnlyList<Guid>>(),
             It.IsAny<Guid>(),
             It.IsAny<byte[]>(),
@@ -179,7 +182,7 @@ public class SoftDeleteFileTests
 
         SetupFiles(false);
 
-        var command = new SoftDeleteFileCommand([Guid.NewGuid()], [], userId, [1]);
+        var command = new TrashItemsCommand([Guid.NewGuid()], [], userId, [1]);
 
         var result = await _handler.Handle(command, CancellationToken.None);
 
@@ -195,19 +198,17 @@ public class SoftDeleteFileTests
         SetupFolderLookup(false, "You can not delete root folder");
         SetupFiles(true);
 
-        var command = new SoftDeleteFileCommand([Guid.NewGuid()], [Guid.NewGuid()], userId, [1]);
+        var command = new TrashItemsCommand([Guid.NewGuid()], [Guid.NewGuid()], userId, [1]);
 
         var result = await _handler.Handle(command, CancellationToken.None);
 
         Assert.False(result.IsSuccess);
         Assert.Equal("You can not delete root folder", result.Error);
 
-        _fileRepositoryMock.Verify(r => r.SoftDeleteById(
-            It.IsAny<IReadOnlyList<Guid>>(),
+        _fileRepositoryMock.Verify(r => r.SoftDeleteFileById(
             It.IsAny<IReadOnlyList<Guid>>(),
             It.IsAny<Guid>(),
             It.IsAny<byte[]>(),
             It.IsAny<CancellationToken>()), Times.Never);
     }
 }
-

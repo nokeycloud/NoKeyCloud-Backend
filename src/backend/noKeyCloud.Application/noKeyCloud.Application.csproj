@@ -15,9 +15,4 @@
       <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="10.0.7" />
     </ItemGroup>
 
-    <ItemGroup>
-      <Folder Include="Features\Files\HardDeleteFile\" />
-      <Folder Include="Features\Files\SoftDeleteFile\" />
-    </ItemGroup>
-
 </Project>

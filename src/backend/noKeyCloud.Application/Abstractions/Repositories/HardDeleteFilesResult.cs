@@ -1,6 +1,6 @@
 namespace noKeyCloud.Application.Abstractions.Repositories;
 
-public enum DeleteFilesResult
+public enum HardDeleteFilesResult
 {
     Success,
     NoFilesSelected,

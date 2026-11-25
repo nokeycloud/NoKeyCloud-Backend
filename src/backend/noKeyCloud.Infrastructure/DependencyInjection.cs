@@ -47,6 +47,8 @@ public static class DependencyInjection
 
         services.AddScoped<IFileRepository, FileRepository>();
 
+        services.AddScoped<ITrashRepository, TrashRepository>();
+
         services.AddScoped<IRegisterInviteRepository, RegisterInviteRepository>();
 
         services.AddScoped<IRefreshTokenProvider, RefreshTokenProvider>();

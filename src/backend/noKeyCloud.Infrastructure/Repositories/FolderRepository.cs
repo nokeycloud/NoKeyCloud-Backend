@@ -1,8 +1,7 @@
-﻿using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore;
 using noKeyCloud.Application.Abstractions.Repositories;
-using noKeyCloud.Contracts.Shared;
+using noKeyCloud.Contracts.Trash;
 using noKeyCloud.Domain.Entities;
-using System.Security.Cryptography.Xml;
 
 namespace noKeyCloud.Infrastructure.Repositories;
 

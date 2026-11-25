@@ -1,4 +1,4 @@
-namespace noKeyCloud.Contracts.Shared;
+namespace noKeyCloud.Contracts.Trash;
 
 public enum TrashType
 {

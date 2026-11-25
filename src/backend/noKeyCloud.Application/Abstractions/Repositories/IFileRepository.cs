@@ -13,10 +13,6 @@ public interface IFileRepository
     
     Task<bool> SoftDeleteFileById(IReadOnlyList<Guid> fileIds, Guid userId, byte[] encryptedKey, CancellationToken cancellationToken);
 
-    Task<List<Trash>> GetTrashedFilesAndFolder(Guid userId, CancellationToken cancellationToken);
-
-    Task<DeleteFilesResult> DeleteFiles(Guid userId, List<Guid> fileIds, CancellationToken cancellationToken);
-
     Task<File> DoesFileEvenExists(File file, string fullPath, CancellationToken cancellationToken);
 
 

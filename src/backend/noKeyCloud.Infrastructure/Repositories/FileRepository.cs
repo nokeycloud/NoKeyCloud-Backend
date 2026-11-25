@@ -1,8 +1,8 @@
-﻿using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using noKeyCloud.Application.Abstractions.Repositories;
 using noKeyCloud.Contracts.Common;
-using noKeyCloud.Contracts.Shared;
+using noKeyCloud.Contracts.Trash;
 using noKeyCloud.Domain.Entities;
 using System.ComponentModel.DataAnnotations;
 using File = noKeyCloud.Domain.Entities.File;
@@ -135,65 +135,6 @@ public class FileRepository : IFileRepository
         return true;
     }
     
-    public async Task<List<Trash>> GetTrashedFilesAndFolder(Guid userId, CancellationToken cancellationToken)
-    {
-        return await _context.Trashes
-            .Where(f => f.UserId == userId)
-            .OrderByDescending(f => f.DeletedAt)
-            .ToListAsync(cancellationToken);
-    }
-
-    public async Task<DeleteFilesResult> DeleteFiles(Guid userId, List<Guid> fileIds, CancellationToken cancellationToken)
-    {
-        var distinctIds = fileIds.Distinct().ToList();
-
-        if (distinctIds.Count == 0)
-        {
-            return DeleteFilesResult.NoFilesSelected;
-        }
-
-        var files = await _context.Files
-            .Where(f => distinctIds.Contains(f.Id) && f.UserId == userId)
-            .ToListAsync(cancellationToken);
-
-        if (files.Count != distinctIds.Count)
-        {
-            return DeleteFilesResult.FilesNotFound;
-        }
-
-        if (files.Any(f => !f.IsDeleted))
-        {
-            return DeleteFilesResult.FilesNotInTrash;
-        }
-
-        foreach (var file in files)
-        {
-            try
-            {
-                System.IO.File.Delete(GetFullPath(file));
-            }
-            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
-            {
-                _logger.LogWarning(ex, "Could not delete the content of file {FileId}. The record was kept so the operation can be retried.", file.Id);
-                return DeleteFilesResult.StorageError;
-            }
-        }
-
-        _context.Files.RemoveRange(files);
-
-        try
-        {
-            await _context.SaveChangesAsync(cancellationToken);
-        }
-        catch (DbUpdateConcurrencyException ex)
-        {
-            _logger.LogWarning(ex, "The records of {Count} file(s) were changed by a parallel operation. Their content is already deleted; the operation can be retried.", files.Count);
-            return DeleteFilesResult.ConcurrencyConflict;
-        }
-
-        return DeleteFilesResult.Success;
-    }
-
     public async Task<File> DoesFileEvenExists(File file, string fullPath, CancellationToken cancellationToken)
     {
         if (System.IO.File.Exists(fullPath))

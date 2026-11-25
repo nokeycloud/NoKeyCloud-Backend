@@ -1,5 +1,5 @@
-﻿using System;
-using noKeyCloud.Contracts.Shared;
+using System;
+using noKeyCloud.Contracts.Trash;
 
 namespace noKeyCloud.Domain.Entities;
 
