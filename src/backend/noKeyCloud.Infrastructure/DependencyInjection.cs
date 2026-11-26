@@ -62,6 +62,18 @@ public static class DependencyInjection
         services.Configure<JwtOptions>(config.GetSection(JwtOptions.SectionName));
         
         services.AddScoped<IAuthService, AuthService>();
+        
+        services.AddScoped<IOpaqueCredentialRepository, OpaqueCredentialRepository>();
+        
+        services.AddScoped<IMasterKeyWrapRepository, MasterKeyWrapRepository>();
+        
+        services.AddScoped<IWebAuthnCredentialRepository, WebAuthnCredentialRepository>();
+        
+        services.AddScoped<IExternalLoginRepository, ExternalLoginRepository>();
+        
+        services.AddScoped<IApiKeyRepository, ApiKeyRepository>();
+        
+        services.AddScoped<IUnitOfWork>(sp => sp.GetRequiredService<DataContext>());
 
 
         var postgreUrl = Environment.GetEnvironmentVariable("DB_HOST");

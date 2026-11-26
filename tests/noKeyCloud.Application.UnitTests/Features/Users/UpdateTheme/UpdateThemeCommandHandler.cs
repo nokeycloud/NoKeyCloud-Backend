@@ -8,12 +8,14 @@ namespace noKeyCloud.Application.UnitTests.Features.Users.UpdateTheme;
 public class UpdateThemeCommandHandlerTests
 {
     private readonly Mock<IUserRepository> _userRepositoryMock;
+    private readonly Mock<IUnitOfWork> _unitOfWorkMock;
     private readonly UpdateThemeCommandHandler _handler;
 
     public UpdateThemeCommandHandlerTests()
     {
         _userRepositoryMock = new Mock<IUserRepository>();
-        _handler = new UpdateThemeCommandHandler(_userRepositoryMock.Object);
+        _unitOfWorkMock = new Mock<IUnitOfWork>();
+        _handler = new UpdateThemeCommandHandler(_userRepositoryMock.Object, _unitOfWorkMock.Object);
     }
 
     private static User CreateFakeUser(Guid id) =>
@@ -21,10 +23,7 @@ public class UpdateThemeCommandHandlerTests
             id: id,
             userIdentifier: Guid.NewGuid(),
             email: "test@email.com",
-            username: "testuser",
-            registrationRecord: "record",
-            encryptedMasterKey: [1],
-            keySalt: [2]);
+            username: "testuser");
 
     [Fact]
     public async Task Handle_WhenUserDoesNotExist_ShouldReturnFailure()
@@ -51,8 +50,8 @@ public class UpdateThemeCommandHandlerTests
 
         await _handler.Handle(new UpdateThemeCommand(userId, "dark"), CancellationToken.None);
 
-        _userRepositoryMock.Verify(
-            r => r.UpdateUserAsync(It.IsAny<User>(), It.IsAny<CancellationToken>()), Times.Never);
+        _userRepositoryMock.Verify(r => r.UpdateUser(It.IsAny<User>()), Times.Never);
+        _unitOfWorkMock.Verify(u => u.SaveChangesAsync(It.IsAny<CancellationToken>()), Times.Never);
     }
 
     [Fact]
@@ -64,9 +63,6 @@ public class UpdateThemeCommandHandlerTests
         _userRepositoryMock
             .Setup(r => r.GetUserByUserId(userId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(user);
-        _userRepositoryMock
-            .Setup(r => r.UpdateUserAsync(user, It.IsAny<CancellationToken>()))
-            .Returns(Task.CompletedTask);
 
         var result = await _handler.Handle(
             new UpdateThemeCommand(userId, "win69"), CancellationToken.None);
@@ -84,14 +80,11 @@ public class UpdateThemeCommandHandlerTests
         _userRepositoryMock
             .Setup(r => r.GetUserByUserId(userId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(user);
-        _userRepositoryMock
-            .Setup(r => r.UpdateUserAsync(user, It.IsAny<CancellationToken>()))
-            .Returns(Task.CompletedTask);
 
         await _handler.Handle(new UpdateThemeCommand(userId, "light"), CancellationToken.None);
 
-        _userRepositoryMock.Verify(
-            r => r.UpdateUserAsync(user, It.IsAny<CancellationToken>()), Times.Once);
+        _userRepositoryMock.Verify(r => r.UpdateUser(user), Times.Once);
+        _unitOfWorkMock.Verify(u => u.SaveChangesAsync(It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Theory]
@@ -106,12 +99,10 @@ public class UpdateThemeCommandHandlerTests
         _userRepositoryMock
             .Setup(r => r.GetUserByUserId(userId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(user);
-        _userRepositoryMock
-            .Setup(r => r.UpdateUserAsync(user, It.IsAny<CancellationToken>()))
-            .Returns(Task.CompletedTask);
 
         await _handler.Handle(new UpdateThemeCommand(userId, theme), CancellationToken.None);
 
         Assert.Equal(theme, user.Theme);
+        _unitOfWorkMock.Verify(u => u.SaveChangesAsync(It.IsAny<CancellationToken>()), Times.Once);
     }
 }

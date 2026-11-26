@@ -61,7 +61,6 @@ public class FileRepository : IFileRepository
                 await System.IO.File.WriteAllBytesAsync(fullPath, fileContent ?? Array.Empty<byte>(), cancellationToken);
 
                 await _context.Files.AddAsync(file, cancellationToken);
-                await _context.SaveChangesAsync(cancellationToken);
             }
         }
         catch (Exception ex)

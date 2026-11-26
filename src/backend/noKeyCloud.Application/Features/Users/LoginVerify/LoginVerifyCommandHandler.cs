@@ -5,6 +5,7 @@ using noKeyCloud.Application.Abstractions.Services;
 using noKeyCloud.Application.Configuration;
 using noKeyCloud.Contracts.Authenticate;
 using noKeyCloud.Contracts.Common;
+using noKeyCloud.Domain.Enums;
 
 namespace noKeyCloud.Application.Features.Users.LoginVerify;
 
@@ -12,6 +13,7 @@ namespace noKeyCloud.Application.Features.Users.LoginVerify;
         IAuthService authService,
         IFolderRepository folderRepository,
         IUserRepository userRepository,
+        IMasterKeyWrapRepository masterKeyWrapRepository,
         IOptions<JwtOptions> jwtOptions)
         : IRequestHandler<LoginVerifyCommand, Result<LoginVerifyResult>>
     {
@@ -49,9 +51,15 @@ namespace noKeyCloud.Application.Features.Users.LoginVerify;
 
             if (!deleteSession) return Result<LoginVerifyResult>.Failure("Could not remove session");
             
+            var masterKey = await masterKeyWrapRepository.GetByUserIdAndTypeAsync(userId, MasterKeyWrapType.OpaquePassword, cancellationToken);
+            if (masterKey is null)
+            {
+                return Result<LoginVerifyResult>.Failure("Master key not found.");
+            }
+            
             var responsePayload = new LoginVerifyResponse(
-                user.EncryptedMasterKey,
-                user.KeySalt);
+                masterKey.WrappedMasterKey,
+                masterKey.Salt);
             
             var handlerResult = new LoginVerifyResult(
                 responsePayload, 

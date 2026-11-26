@@ -11,6 +11,7 @@ public class UploadFileTests
     private readonly Mock<IFileRepository> _fileRepositoryMock;
     private readonly Mock<IUserRepository> _userRepositoryMock;
     private readonly Mock<IFolderRepository> _folderRepositoryMock;
+    private readonly Mock<IUnitOfWork> _unitOfWorkMock;
     private readonly UploadFileHandler _handler;
 
     public UploadFileTests()
@@ -18,11 +19,13 @@ public class UploadFileTests
         _fileRepositoryMock = new Mock<IFileRepository>();
         _userRepositoryMock = new Mock<IUserRepository>();
         _folderRepositoryMock = new Mock<IFolderRepository>();
+        _unitOfWorkMock = new Mock<IUnitOfWork>();
 
         _handler = new UploadFileHandler(
             _fileRepositoryMock.Object,
             _userRepositoryMock.Object,
-            _folderRepositoryMock.Object);
+            _folderRepositoryMock.Object,
+            _unitOfWorkMock.Object);
     }
 
     private static User CreateFakeUser(Guid id) =>
@@ -30,10 +33,7 @@ public class UploadFileTests
             id: id,
             userIdentifier: Guid.NewGuid(),
             email: "test@email.com",
-            username: "testuser",
-            registrationRecord: "reg-record",
-            encryptedMasterKey: [1],
-            keySalt: [2]);
+            username: "testuser");
 
     private static Folder CreateFakeFolder(Guid userId, Guid folderId)
     {
@@ -82,6 +82,7 @@ public class UploadFileTests
         Assert.True(result.IsSuccess);
         Assert.NotNull(result.Value);
         Assert.NotEqual(Guid.Empty, result.Value.FileId);
+        _unitOfWorkMock.Verify(u => u.SaveChangesAsync(It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Fact]
@@ -114,6 +115,7 @@ public class UploadFileTests
 
         Assert.NotNull(capturedContent);
         Assert.Equal(content, capturedContent);
+        _unitOfWorkMock.Verify(u => u.SaveChangesAsync(It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Fact]
@@ -145,6 +147,7 @@ public class UploadFileTests
 
         Assert.NotNull(captured);
         Assert.Equal(sizeBytes, captured!.SizeBytes);
+        _unitOfWorkMock.Verify(u => u.SaveChangesAsync(It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Fact]
@@ -169,6 +172,7 @@ public class UploadFileTests
 
         Assert.False(result.IsSuccess);
         Assert.Equal("Folder not found", result.Error);
+        _unitOfWorkMock.Verify(u => u.SaveChangesAsync(It.IsAny<CancellationToken>()), Times.Never);
     }
 
     [Fact]
@@ -193,6 +197,7 @@ public class UploadFileTests
 
         Assert.False(result.IsSuccess);
         Assert.Equal("User not found", result.Error);
+        _unitOfWorkMock.Verify(u => u.SaveChangesAsync(It.IsAny<CancellationToken>()), Times.Never);
     }
 
     [Fact]
@@ -207,6 +212,7 @@ public class UploadFileTests
 
         Assert.False(result.IsSuccess);
         Assert.Equal("Wrong id format", result.Error);
+        _unitOfWorkMock.Verify(u => u.SaveChangesAsync(It.IsAny<CancellationToken>()), Times.Never);
     }
 
     [Fact]
@@ -235,5 +241,6 @@ public class UploadFileTests
 
         Assert.False(result.IsSuccess);
         Assert.Equal("Disk full", result.Error);
+        _unitOfWorkMock.Verify(u => u.SaveChangesAsync(It.IsAny<CancellationToken>()), Times.Never);
     }
 }

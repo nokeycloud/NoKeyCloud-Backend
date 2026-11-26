@@ -1,10 +1,11 @@
 ﻿using Microsoft.EntityFrameworkCore;
+using noKeyCloud.Application.Abstractions.Repositories;
 using noKeyCloud.Domain.Entities;
 using File = noKeyCloud.Domain.Entities.File;
 
 namespace noKeyCloud.Infrastructure;
 
-public class DataContext : DbContext
+public class DataContext : DbContext, IUnitOfWork
 {
     public DataContext(DbContextOptions<DataContext> options) : base(options)
     {
@@ -21,6 +22,12 @@ public class DataContext : DbContext
     public DbSet<RegisterInvite> RegisterInvites { get; set; }
     public DbSet<Trash> Trashes { get; set; }
 
+    public DbSet<OpaqueCredential> OpaqueCredentials { get; set; }
+    public DbSet<WebAuthnCredential> WebAuthnCredentials { get; set; }
+    public DbSet<ExternalLogin> ExternalLogins { get; set; }
+    public DbSet<ApiKey> ApiKeys { get; set; }
+    public DbSet<MasterKeyWrap>  MasterKeyWraps { get; set; }
+    
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         modelBuilder.ApplyConfigurationsFromAssembly(

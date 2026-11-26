@@ -4,7 +4,7 @@ using noKeyCloud.Contracts.Common;
 
 namespace noKeyCloud.Application.Features.Admin.RevokeRegisterInvite;
 
-public class RevokeRegisterInviteHandler(IRegisterInviteRepository inviteRepository) 
+public class RevokeRegisterInviteHandler(IRegisterInviteRepository inviteRepository, IUnitOfWork unitOfWork) 
     : IRequestHandler<RevokeRegisterInviteCommand, Result>
 {
     public async Task<Result> Handle(RevokeRegisterInviteCommand request, CancellationToken cancellationToken)
@@ -12,7 +12,8 @@ public class RevokeRegisterInviteHandler(IRegisterInviteRepository inviteReposit
         var invite = await inviteRepository.GetByIdAsync(request.Id, cancellationToken);
         if (invite == null) return Result.Failure("Invite not found.");
 
-        await inviteRepository.DeleteAsync(invite, cancellationToken);
+        inviteRepository.Delete(invite);
+        await unitOfWork.SaveChangesAsync(cancellationToken);
         return Result.Success();
     }
 }

@@ -5,10 +5,18 @@ using noKeyCloud.Contracts.Common;
 using noKeyCloud.Domain.Entities;
 using noKeyCloud.Application.Features.Folders;
 using noKeyCloud.Domain.Enums;
+using noKeyCloud.Domain.ValueObjects;
 
 namespace noKeyCloud.Application.Features.Users.Register;
 
-public class RegisterUserHandler(IUserRepository userRepository, IFolderRepository folderRepository, IRegisterInviteRepository registerInviteRepository, IRecoveryMethodRepository recoveryMethodRepository)
+public class RegisterUserHandler(
+    IUserRepository userRepository, 
+    IFolderRepository folderRepository, 
+    IRegisterInviteRepository registerInviteRepository, 
+    IRecoveryMethodRepository recoveryMethodRepository, 
+    IOpaqueCredentialRepository opaqueCredentialRepository, 
+    IMasterKeyWrapRepository masterKeyWrapRepository,
+    IUnitOfWork unitOfWork)
     : IRequestHandler<RegisterUserCommand, Result>
 {
     public async Task<Result> Handle(RegisterUserCommand request, CancellationToken cancellationToken)
@@ -46,9 +54,6 @@ public class RegisterUserHandler(IUserRepository userRepository, IFolderReposito
                 request.UserIdentifier,
                 normalizedEmail, 
                 normalizedUsername, 
-                request.RegistrationRecord, 
-                request.EncryptedMasterKey, 
-                request.KeySalt,
                 isAdmin: isFirstUser);
 
             var temporaryNameBytes = Array.Empty<byte>();
@@ -72,17 +77,34 @@ public class RegisterUserHandler(IUserRepository userRepository, IFolderReposito
                 RecoveryMethodType.Secret_Recovery,
                 request.RecoveryEncryptedMasterKey,
                 userId);
-            
-            // TODO: wrap these two calls in a database transaction so that if the folder creation fails, the user isn't left in a broken state without a home folder.
-            await userRepository.CreateUser(user);
-            await folderRepository.AddFolder(rootFolder, cancellationToken);
-            await recoveryMethodRepository.CreateRecoveryMethod(recoveryMethod, cancellationToken);
+
+            var registrationRecord = new OpaqueCredential(
+                Guid.NewGuid(),
+                userId,
+                request.RegistrationRecord);
+
+            var masterKeyWrap = new MasterKeyWrap(
+                Guid.NewGuid(),
+                userId,
+                MasterKeyWrapType.OpaquePassword,
+                request.EncryptedMasterKey,
+                request.KeySalt,
+                Argon2idParams.Default);
+                
+
+            userRepository.CreateUser(user);
+            folderRepository.Add(rootFolder);
+            recoveryMethodRepository.Add(recoveryMethod);
+            opaqueCredentialRepository.Add(registrationRecord);
+            masterKeyWrapRepository.Add(masterKeyWrap);
 
             if (validInvite != null)
             {
                 validInvite.MarkAsUsed();
-                await registerInviteRepository.UpdateAsync(validInvite, cancellationToken);
+                registerInviteRepository.Update(validInvite);
             }
+            
+            await unitOfWork.SaveChangesAsync(cancellationToken);
 
         }
         catch (Exception e)

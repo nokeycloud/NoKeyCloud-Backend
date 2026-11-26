@@ -4,10 +4,10 @@ namespace noKeyCloud.Application.Abstractions.Repositories;
 
 public interface IRegisterInviteRepository
 {
-    Task AddAsync(RegisterInvite invite, CancellationToken cancellationToken = default);
+    void Add(RegisterInvite invite);
     Task<RegisterInvite?> GetByCodeAsync(string code, CancellationToken cancellationToken = default);
-    Task UpdateAsync(RegisterInvite invite, CancellationToken cancellationToken = default);
+    void Update(RegisterInvite invite);
     Task<IEnumerable<RegisterInvite>> GetActiveInvitesAsync(CancellationToken cancellationToken = default);
     Task<RegisterInvite?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default);
-    Task DeleteAsync(RegisterInvite invite, CancellationToken cancellationToken = default);
+    void Delete(RegisterInvite invite);
 }

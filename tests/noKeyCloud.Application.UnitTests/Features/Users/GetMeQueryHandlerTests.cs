@@ -31,9 +31,6 @@ public class GetMeQueryHandlerTests
             userIdentifier: Guid.NewGuid(),
             email: "test@email.com",
             username: "testUser",
-            registrationRecord: "record",
-            encryptedMasterKey: [1],
-            keySalt: [2],
             isAdmin: isAdmin);
 
     private static Folder CreateFakeRootFolder(Guid userId, Guid rootFolderId) =>
